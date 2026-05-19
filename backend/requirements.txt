@@ -5,3 +5,7 @@ python-docx
 PyPDF2
 httpx
 pytest
+SQLAlchemy
+psycopg2-binary
+alembic
+python-dotenv
