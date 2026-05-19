@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/venv/
+.venv/
+venv/
+
+# Build output
+.next/
+frontend/.next/
+dist/
+build/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Runtime storage and generated files
+storage/uploads/
+storage/generated_outputs/
+storage/formatted_outputs/
+storage/**/*.tmp
+
+# Local environment and logs
+.env
+.env.*
+*.log
+backend/tmp-*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
