@@ -202,15 +202,15 @@ export default function DashboardPage() {
         setIsLoading(true);
         setError(null);
 
-        const [health, projectsResponse, activeProject, intelligence, journalPlanner, workflowRun] =
-          await Promise.all([
-            getHealth(),
-            getProjects(),
-            getProject("PROJECT_001"),
-            getIntelligence("PROJECT_001"),
-            getJournalPlanner("PROJECT_001"),
-            getWorkflowStatus("PROJECT_001").catch(() => null),
-          ]);
+        const [health, projectsResponse] = await Promise.all([getHealth(), getProjects()]);
+        const activeProjectId = projectsResponse[0]?.project_id || projectsResponse[0]?.id;
+        const fallbackProjectId = activeProjectId || "PROJECT_001";
+        const [activeProject, intelligence, journalPlanner, workflowRun] = await Promise.all([
+          activeProjectId ? getProject(activeProjectId) : Promise.resolve(null),
+          getIntelligence(fallbackProjectId),
+          getJournalPlanner(fallbackProjectId),
+          getWorkflowStatus(fallbackProjectId).catch(() => null),
+        ]);
 
         if (!cancelled) {
           setData({

@@ -15,12 +15,22 @@ export type HealthResponse = {
 
 export type Project = {
   id: string;
+  project_id?: string;
+  human_readable_code?: string;
   name: string;
+  title?: string;
+  thesis_title?: string;
   thesis_type: string;
+  research_type?: string;
+  target_output?: string;
+  target_template?: string;
   target_papers: number;
   progress: number;
   intelligence_score: number;
   status: string;
+  primary_author?: string;
+  institution?: string;
+  last_activity?: string;
 };
 
 export type ProjectDetail = Project & {
@@ -28,6 +38,17 @@ export type ProjectDetail = Project & {
   institution: string;
   target_template: string;
   last_activity: string;
+};
+
+export type ProjectCreatePayload = {
+  title: string;
+  thesis_title?: string;
+  research_type?: string;
+  target_output?: string;
+  target_template?: string;
+  primary_author?: string;
+  institution?: string;
+  notes?: string;
 };
 
 export type IntelligenceSummary = {
@@ -430,6 +451,27 @@ async function request<T>(path: string): Promise<T> {
   return parseApiResponse<T>(response);
 }
 
+async function mutation<T>(
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body?: unknown,
+): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: {
+      Accept: "application/json",
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+  }
+
+  return parseApiResponse<T>(response);
+}
+
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as T | StandardApiResponse<T>;
   if (
@@ -461,6 +503,24 @@ export async function getProjects() {
 export async function getProject(projectId: string) {
   const data = await request<{ project: ProjectDetail }>(`/projects/${projectId}`);
   return data.project;
+}
+
+export async function createProject(payload: ProjectCreatePayload) {
+  const data = await mutation<{ project: ProjectDetail }>("/projects", "POST", payload);
+  return data.project;
+}
+
+export async function updateProject(projectId: string, payload: Partial<ProjectCreatePayload>) {
+  const data = await mutation<{ project: ProjectDetail }>(
+    `/projects/${projectId}`,
+    "PATCH",
+    payload,
+  );
+  return data.project;
+}
+
+export async function deleteProject(projectId: string) {
+  return mutation<{ project_id: string; deleted: boolean }>(`/projects/${projectId}`, "DELETE");
 }
 
 export function getIntelligence(projectId: string) {

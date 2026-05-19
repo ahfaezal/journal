@@ -3,6 +3,12 @@ from pathlib import Path
 from shutil import copyfileobj
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.database.database import SessionLocal
+from app.database.models import Project, Upload
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -17,17 +23,43 @@ def get_project_upload_dir(project_id: str) -> Path:
     return project_upload_dir
 
 
+def database_enabled() -> bool:
+    return bool(settings.database_url and SessionLocal is not None)
+
+
+def open_session() -> Session:
+    if SessionLocal is None:
+        raise RuntimeError("DATABASE_URL is not configured.")
+    return SessionLocal()
+
+
+def get_project_by_identifier(db: Session, project_id: str) -> Project | None:
+    statement = select(Project).where(
+        Project.is_deleted.is_(False),
+        or_(
+            Project.project_id == project_id,
+            Project.human_readable_code == project_id,
+            Project.id == project_id,
+        ),
+    )
+    return db.scalars(statement).first()
+
+
 def build_file_response(
-    file_path: Path,
     file_type: str,
     chapter_label: str,
+    file_path: Path | None = None,
+    filename: str | None = None,
+    size: int | None = None,
     status: str = "uploaded",
 ) -> dict[str, object]:
+    resolved_filename = filename or (file_path.name if file_path else "")
+    resolved_size = size if size is not None else (file_path.stat().st_size if file_path else 0)
     return {
-        "filename": file_path.name,
+        "filename": resolved_filename,
         "file_type": file_type,
         "chapter_label": chapter_label,
-        "size": file_path.stat().st_size,
+        "size": resolved_size,
         "status": status,
     }
 
@@ -51,6 +83,49 @@ def write_upload_metadata(project_id: str, metadata: dict[str, dict[str, str]]) 
     metadata_path = get_metadata_path(project_id)
     with metadata_path.open("w", encoding="utf-8") as metadata_file:
         json.dump(metadata, metadata_file, indent=2)
+
+
+def save_upload_metadata_to_db(
+    project_id: str,
+    original_filename: str,
+    stored_filename: str,
+    file_path: Path,
+    file_type: str,
+    chapter_label: str,
+    mime_type: str | None,
+    size_bytes: int,
+) -> Upload:
+    with open_session() as db:
+        project = get_project_by_identifier(db, project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        upload = Upload(
+            project_id=project.id,
+            file_type=file_type,
+            chapter_label=chapter_label,
+            original_filename=original_filename,
+            stored_filename=stored_filename,
+            file_path=str(file_path),
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+            status="uploaded",
+            metadata_json={"external_project_id": project_id},
+        )
+        db.add(upload)
+        db.commit()
+        db.refresh(upload)
+        return upload
+
+
+def serialize_upload(upload: Upload, status: str = "stored") -> dict[str, object]:
+    return build_file_response(
+        file_type=upload.file_type,
+        chapter_label=upload.chapter_label or "Uploaded Document",
+        filename=upload.stored_filename,
+        size=upload.size_bytes,
+        status=status,
+    )
 
 
 @router.post("/thesis")
@@ -83,25 +158,63 @@ async def upload_thesis_file(
     with target_path.open("wb") as output_file:
         copyfileobj(file.file, output_file)
 
-    metadata = read_upload_metadata(project_id)
-    metadata[safe_filename] = {
-        "file_type": file_type,
-        "chapter_label": chapter_label,
-    }
-    write_upload_metadata(project_id, metadata)
+    size_bytes = target_path.stat().st_size
 
-    return {
-        "project_id": project_id,
-        **build_file_response(
+    if database_enabled():
+        upload = save_upload_metadata_to_db(
+            project_id=project_id,
+            original_filename=safe_filename,
+            stored_filename=safe_filename,
             file_path=target_path,
             file_type=file_type,
             chapter_label=chapter_label,
-        ),
+            mime_type=file.content_type,
+            size_bytes=size_bytes,
+        )
+        upload_response = serialize_upload(upload, status="uploaded")
+    else:
+        metadata = read_upload_metadata(project_id)
+        metadata[safe_filename] = {
+            "file_type": file_type,
+            "chapter_label": chapter_label,
+            "original_filename": safe_filename,
+            "stored_filename": safe_filename,
+            "file_path": str(target_path),
+            "mime_type": file.content_type or "",
+            "size_bytes": str(size_bytes),
+            "status": "uploaded",
+        }
+        write_upload_metadata(project_id, metadata)
+        upload_response = build_file_response(
+            file_path=target_path,
+            file_type=file_type,
+            chapter_label=chapter_label,
+        )
+
+    return {
+        "project_id": project_id,
+        **upload_response,
     }
 
 
 @router.get("/thesis/{project_id}/files")
 def get_uploaded_files(project_id: str) -> dict[str, object]:
+    if database_enabled():
+        with open_session() as db:
+            project = get_project_by_identifier(db, project_id)
+            if project is None:
+                raise HTTPException(status_code=404, detail="Project not found")
+
+            uploads = db.scalars(
+                select(Upload)
+                .where(Upload.project_id == project.id)
+                .order_by(Upload.created_at.desc())
+            ).all()
+            return {
+                "project_id": project_id,
+                "files": [serialize_upload(upload) for upload in uploads],
+            }
+
     target_dir = get_project_upload_dir(project_id)
     metadata = read_upload_metadata(project_id)
     files = []

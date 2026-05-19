@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -24,11 +24,18 @@ class TimestampMixin:
 class Project(Base, TimestampMixin):
     __tablename__ = "projects"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    thesis_type: Mapped[str | None] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(String(64), default="active", nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    project_id: Mapped[str] = mapped_column(String(36), unique=True, index=True, nullable=False, default=new_uuid)
+    human_readable_code: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    thesis_title: Mapped[str | None] = mapped_column(Text)
+    research_type: Mapped[str | None] = mapped_column(String(255))
+    target_output: Mapped[str | None] = mapped_column(String(128))
     target_template: Mapped[str | None] = mapped_column(String(64))
+    primary_author: Mapped[str | None] = mapped_column(String(255))
+    institution: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(64), default="Active", nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
     uploads: Mapped[list["Upload"]] = relationship(back_populates="project", cascade="all, delete-orphan")
@@ -41,12 +48,15 @@ class Upload(Base, TimestampMixin):
     __tablename__ = "uploads"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    upload_id: Mapped[str] = mapped_column(String(36), unique=True, index=True, nullable=False, default=new_uuid)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
-    filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(64), nullable=False)
     chapter_label: Mapped[str | None] = mapped_column(String(128))
-    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
-    size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    mime_type: Mapped[str | None] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(64), default="uploaded", nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 

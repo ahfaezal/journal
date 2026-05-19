@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -13,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/src/components/layouts/AppShell";
+import { createProject } from "@/src/lib/api";
 
 const researchTypes = ["DDR", "Quantitative", "Qualitative", "Mixed Method"];
 const targetOutputs = ["Journal Article", "Conference Paper", "Multiple Papers"];
@@ -73,16 +76,25 @@ function SectionTitle({
 function Field({
   label,
   placeholder,
+  name,
+  value,
+  onChange,
 }: {
   label: string;
   placeholder: string;
+  name: string;
+  value: string;
+  onChange: (name: string, value: string) => void;
 }) {
   return (
     <label className="block">
       <span className="text-[14px] font-semibold text-slate-700">{label}</span>
       <input
         className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-300 focus:bg-white"
+        name={name}
+        onChange={(event) => onChange(name, event.target.value)}
         placeholder={placeholder}
+        value={value}
       />
     </label>
   );
@@ -91,14 +103,25 @@ function Field({
 function SelectField({
   label,
   options,
+  name,
+  value,
+  onChange,
 }: {
   label: string;
   options: string[];
+  name: string;
+  value: string;
+  onChange: (name: string, value: string) => void;
 }) {
   return (
     <label className="block">
       <span className="text-[14px] font-semibold text-slate-700">{label}</span>
-      <select className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-[15px] text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white">
+      <select
+        className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-[15px] text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white"
+        name={name}
+        onChange={(event) => onChange(name, event.target.value)}
+        value={value}
+      >
         {options.map((option) => (
           <option key={option}>{option}</option>
         ))}
@@ -108,6 +131,39 @@ function SelectField({
 }
 
 export default function NewProjectPage() {
+  const router = useRouter();
+  const [form, setForm] = useState({
+    title: "",
+    thesis_title: "",
+    research_type: researchTypes[0],
+    target_output: targetOutputs[0],
+    target_template: targetTemplates[0],
+    primary_author: "Dr. Zahirwan",
+    institution: "Universiti Islam Selangor",
+    notes: "",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function updateField(name: string, value: string) {
+    setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  async function handleCreateProject() {
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      await createProject(form);
+      router.push("/projects");
+    } catch (createError) {
+      setError(
+        createError instanceof Error ? createError.message : "Unable to create project workspace.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <AppShell>
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
@@ -125,7 +181,12 @@ export default function NewProjectPage() {
                 Set up a new thesis-to-journal workspace.
               </p>
             </div>
-            <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300">
+            <button
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!form.title.trim() || isSubmitting}
+              onClick={handleCreateProject}
+              type="button"
+            >
               Save Draft
               <ArrowRight className="size-4" />
             </button>
@@ -137,21 +198,70 @@ export default function NewProjectPage() {
             <Card>
               <SectionTitle icon={<FileText className="size-5" />} title="Project Setup Form" />
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Project name" placeholder="e.g. Dakwah Content Selection Module" />
-                <Field label="Thesis title" placeholder="Enter full thesis title" />
-                <SelectField label="Research type" options={researchTypes} />
-                <SelectField label="Target output" options={targetOutputs} />
-                <SelectField label="Target template" options={targetTemplates} />
-                <Field label="Primary author" placeholder="Dr. Zahirwan" />
-                <Field label="Institution" placeholder="Universiti Islam Selangor" />
+                <Field
+                  label="Project name"
+                  name="title"
+                  onChange={updateField}
+                  placeholder="e.g. Dakwah Content Selection Module"
+                  value={form.title}
+                />
+                <Field
+                  label="Thesis title"
+                  name="thesis_title"
+                  onChange={updateField}
+                  placeholder="Enter full thesis title"
+                  value={form.thesis_title}
+                />
+                <SelectField
+                  label="Research type"
+                  name="research_type"
+                  onChange={updateField}
+                  options={researchTypes}
+                  value={form.research_type}
+                />
+                <SelectField
+                  label="Target output"
+                  name="target_output"
+                  onChange={updateField}
+                  options={targetOutputs}
+                  value={form.target_output}
+                />
+                <SelectField
+                  label="Target template"
+                  name="target_template"
+                  onChange={updateField}
+                  options={targetTemplates}
+                  value={form.target_template}
+                />
+                <Field
+                  label="Primary author"
+                  name="primary_author"
+                  onChange={updateField}
+                  placeholder="Dr. Zahirwan"
+                  value={form.primary_author}
+                />
+                <Field
+                  label="Institution"
+                  name="institution"
+                  onChange={updateField}
+                  placeholder="Universiti Islam Selangor"
+                  value={form.institution}
+                />
                 <label className="block md:col-span-2">
                   <span className="text-[14px] font-semibold text-slate-700">Notes</span>
                   <textarea
                     className="mt-2 min-h-28 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-300 focus:bg-white"
+                    onChange={(event) => updateField("notes", event.target.value)}
                     placeholder="Add project scope notes, target paper plan, or submission reminders."
+                    value={form.notes}
                   />
                 </label>
               </div>
+              {error ? (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[14px] font-semibold text-amber-800">
+                  {error}
+                </div>
+              ) : null}
             </Card>
 
             <Card>
@@ -238,8 +348,13 @@ export default function NewProjectPage() {
                 intelligence maps, journal workflow, and reviewer simulation.
               </p>
             </div>
-            <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] transition hover:bg-cyan-300">
-              Create Project Workspace
+            <button
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!form.title.trim() || isSubmitting}
+              onClick={handleCreateProject}
+              type="button"
+            >
+              {isSubmitting ? "Creating Workspace..." : "Create Project Workspace"}
               <ArrowRight className="size-4" />
             </button>
           </div>

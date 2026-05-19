@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -12,48 +14,9 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/src/components/layouts/AppShell";
+import { getProjects, type Project } from "@/src/lib/api";
 
 const filters = ["All", "Active", "Draft", "Submission Ready", "Archived"];
-
-const projects = [
-  {
-    id: "PROJECT_001",
-    title: "Dakwah Content Selection Module",
-    thesisType: "Design and Development Research",
-    papers: "3 target papers",
-    progress: "86%",
-    activity: "Today, 8:30 AM",
-    score: "86%",
-    status: "Active",
-  },
-  {
-    id: "PROJECT_002",
-    title: "TVET NOSS Quality Study",
-    thesisType: "Mixed-methods research",
-    papers: "2 target papers",
-    progress: "42%",
-    activity: "Yesterday, 4:10 PM",
-    score: "74%",
-    status: "Draft",
-  },
-  {
-    id: "PROJECT_003",
-    title: "Islamic Education Framework Paper",
-    thesisType: "Framework synthesis",
-    papers: "1 target paper",
-    progress: "94%",
-    activity: "May 17, 2026",
-    score: "91%",
-    status: "Submission Ready",
-  },
-];
-
-const summary = [
-  { label: "Total projects", value: "03", icon: <FolderKanban className="size-5" /> },
-  { label: "Active papers", value: "08", icon: <FileText className="size-5" /> },
-  { label: "Locked sections", value: "31", icon: <FileCheck2 className="size-5" /> },
-  { label: "Pending audits", value: "05", icon: <ShieldCheck className="size-5" /> },
-];
 
 function Card({
   children,
@@ -75,6 +38,59 @@ function Card({
 }
 
 export default function ProjectsPage() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProjects() {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const result = await getProjects();
+        if (!cancelled) {
+          setProjects(result);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Unable to load projects.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadProjects();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const summary = useMemo(
+    () => [
+      {
+        label: "Total projects",
+        value: String(projects.length).padStart(2, "0"),
+        icon: <FolderKanban className="size-5" />,
+      },
+      {
+        label: "Active papers",
+        value: String(projects.reduce((total, project) => total + project.target_papers, 0)).padStart(
+          2,
+          "0",
+        ),
+        icon: <FileText className="size-5" />,
+      },
+      { label: "Locked sections", value: "31", icon: <FileCheck2 className="size-5" /> },
+      { label: "Pending audits", value: "05", icon: <ShieldCheck className="size-5" /> },
+    ],
+    [projects],
+  );
+
   return (
     <AppShell>
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
@@ -90,12 +106,21 @@ export default function ProjectsPage() {
                 Manage thesis-to-journal workspaces.
               </p>
             </div>
-            <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300">
+            <Link
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300"
+              href="/projects/new"
+            >
               Create New Project
               <PlusCircle className="size-4" />
-            </button>
+            </Link>
           </div>
         </section>
+
+        {error ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[15px] font-semibold text-amber-800">
+            {error}
+          </div>
+        ) : null}
 
         <section className="grid gap-6 xl:grid-cols-[1fr_360px]">
           <div className="space-y-6">
@@ -117,67 +142,81 @@ export default function ProjectsPage() {
             </Card>
 
             <div className="grid gap-5 lg:grid-cols-2">
-              {projects.map((project) => (
-                <Card key={project.id}>
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-[13px] font-semibold tracking-[0.16em] text-cyan-700">
-                        {project.id}
-                      </div>
-                      <h2 className="mt-1 text-xl font-semibold text-slate-950">
-                        {project.title}
-                      </h2>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold ${
-                        project.status === "Active"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : project.status === "Draft"
-                            ? "bg-slate-100 text-slate-600"
-                            : "bg-cyan-100 text-cyan-700"
-                      }`}
-                    >
-                      {project.status}
-                    </span>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {[
-                      ["Thesis type", project.thesisType],
-                      ["Target papers", project.papers],
-                      ["Last activity", project.activity],
-                      ["Intelligence score", project.score],
-                    ].map(([label, value]) => (
-                      <div className="rounded-xl bg-slate-50 p-3" key={label}>
-                        <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-slate-400">
-                          {label}
-                        </div>
-                        <div className="mt-1 text-[14px] font-semibold leading-6 text-slate-700">
-                          {value}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="mb-2 flex items-center justify-between text-[14px] font-semibold">
-                      <span className="text-slate-600">Progress</span>
-                      <span className="text-cyan-700">{project.progress}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-slate-100">
-                      <div
-                        className="h-2 rounded-full bg-cyan-600"
-                        style={{ width: project.progress }}
-                      />
-                    </div>
-                  </div>
-
-                  <button className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#07162c] px-4 text-[15px] font-semibold text-white transition hover:bg-cyan-900">
-                    Open Project
-                    <ArrowRight className="size-4" />
-                  </button>
+              {isLoading ? (
+                <Card>
+                  <div className="text-[15px] font-semibold text-slate-500">Loading projects...</div>
                 </Card>
-              ))}
+              ) : null}
+
+              {projects.map((project) => {
+                const progress = `${project.progress}%`;
+                const projectTitle = project.title || project.name;
+                const thesisType = project.research_type || project.thesis_type;
+                const activity = project.last_activity || "Just now";
+                const score = `${project.intelligence_score}%`;
+                const papers = `${project.target_papers} target ${
+                  project.target_papers === 1 ? "paper" : "papers"
+                }`;
+
+                return (
+                  <Card key={project.id}>
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[13px] font-semibold tracking-[0.16em] text-cyan-700">
+                          {project.id}
+                        </div>
+                        <h2 className="mt-1 text-xl font-semibold text-slate-950">
+                          {projectTitle}
+                        </h2>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold ${
+                          project.status === "Active"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : project.status === "Draft"
+                              ? "bg-slate-100 text-slate-600"
+                              : "bg-cyan-100 text-cyan-700"
+                        }`}
+                      >
+                        {project.status}
+                      </span>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {[
+                        ["Thesis type", thesisType],
+                        ["Target papers", papers],
+                        ["Last activity", activity],
+                        ["Intelligence score", score],
+                      ].map(([label, value]) => (
+                        <div className="rounded-xl bg-slate-50 p-3" key={label}>
+                          <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                            {label}
+                          </div>
+                          <div className="mt-1 text-[14px] font-semibold leading-6 text-slate-700">
+                            {value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="mb-2 flex items-center justify-between text-[14px] font-semibold">
+                        <span className="text-slate-600">Progress</span>
+                        <span className="text-cyan-700">{progress}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100">
+                        <div className="h-2 rounded-full bg-cyan-600" style={{ width: progress }} />
+                      </div>
+                    </div>
+
+                    <button className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#07162c] px-4 text-[15px] font-semibold text-white transition hover:bg-cyan-900">
+                      Open Project
+                      <ArrowRight className="size-4" />
+                    </button>
+                  </Card>
+                );
+              })}
             </div>
           </div>
 
@@ -218,10 +257,13 @@ export default function ProjectsPage() {
                   Start a new thesis-to-journal workspace with thesis upload,
                   MFL mapping, and journal workflow planning.
                 </p>
-                <button className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] transition hover:bg-cyan-300">
+                <Link
+                  className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] transition hover:bg-cyan-300"
+                  href="/projects/new"
+                >
                   Create New Project
                   <ArrowRight className="size-4" />
-                </button>
+                </Link>
               </div>
             </Card>
           </aside>
