@@ -10,6 +10,7 @@ from app.api.objective import read_objective_map
 from app.api.parser import read_parsed_thesis
 from app.api.table import read_table_map
 from app.services.knowledge_graph_service import build_knowledge_graph
+from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/knowledge-graph", tags=["knowledge-graph"])
 
@@ -29,8 +30,7 @@ def read_knowledge_graph(project_id: str) -> dict[str, Any] | None:
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 @router.post("/{project_id}/build")
@@ -45,8 +45,7 @@ def build_project_knowledge_graph(project_id: str) -> dict[str, Any]:
     )
 
     output_path = get_knowledge_graph_output_path(project_id)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(knowledge_graph, output_file, indent=2, ensure_ascii=False)
+    knowledge_graph = safe_write_json(output_path, knowledge_graph, status="built")
 
     return knowledge_graph
 

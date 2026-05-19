@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.upload import get_project_upload_dir
 from app.services.parser_service import parse_uploaded_documents
+from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/parser", tags=["parser"])
 
@@ -41,8 +42,7 @@ def parse_project_uploads(project_id: str) -> dict[str, Any]:
     }
 
     output_path = get_parsed_output_path(project_id)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(parsed_output, output_file, indent=2, ensure_ascii=False)
+    parsed_output = safe_write_json(output_path, parsed_output, status="parsed")
 
     return parsed_output
 
@@ -52,8 +52,7 @@ def read_parsed_thesis(project_id: str) -> dict[str, Any] | None:
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 @router.post("/{project_id}/parse")

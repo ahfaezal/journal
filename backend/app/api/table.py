@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.parser import read_parsed_thesis
 from app.services.table_mapper_service import build_table_map
+from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/table", tags=["table"])
 
@@ -25,8 +26,7 @@ def read_table_map(project_id: str) -> dict[str, Any] | None:
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 @router.post("/{project_id}/map")
@@ -40,8 +40,7 @@ def map_project_tables(project_id: str) -> dict[str, Any]:
 
     table_map = build_table_map(project_id=project_id, parsed_thesis=parsed_thesis)
     output_path = get_table_map_output_path(project_id)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(table_map, output_file, indent=2, ensure_ascii=False)
+    table_map = safe_write_json(output_path, table_map, status="mapped")
 
     return table_map
 

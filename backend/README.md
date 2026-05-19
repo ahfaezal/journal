@@ -5,7 +5,7 @@ FastAPI foundation for the Thesis2Journal AI system.
 ## Setup
 
 ```powershell
-cd C:\projects\myresearch\Thesis-to-Journal\backend
+cd C:\projects\myresearch\journal\backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -32,3 +32,10 @@ The API will run at:
 - `GET /journal/{project_id}/planner`
 
 This foundation uses mock data only. No database or OpenAI integration is enabled yet.
+
+## Tests
+
+```powershell
+pip install -r requirements.txt
+python -m pytest
+```

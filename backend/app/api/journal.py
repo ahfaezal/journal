@@ -19,6 +19,7 @@ from app.services.paper_extraction_service import build_paper_extraction
 from app.services.reference_builder_service import build_reference_bank, build_reference_markdown
 from app.services.section_structure_service import build_section_structure
 from app.services.section_writer_service import generate_section_draft, lock_section
+from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/journal", tags=["journal"])
 
@@ -39,8 +40,7 @@ def read_journal_plan(project_id: str) -> dict[str, Any] | None:
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 def get_paper_extraction_output_path(project_id: str, paper_id: str) -> Path:
@@ -54,8 +54,7 @@ def read_paper_extraction(project_id: str, paper_id: str) -> dict[str, Any] | No
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 def get_section_structure_output_path(project_id: str, paper_id: str) -> Path:
@@ -69,8 +68,7 @@ def read_section_structure(project_id: str, paper_id: str) -> dict[str, Any] | N
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 def section_filename(section_name: str) -> str:
@@ -96,8 +94,7 @@ def read_generated_section(project_id: str, paper_id: str, section_name: str) ->
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 def read_generated_sections(project_id: str, paper_id: str) -> list[dict[str, Any]]:
@@ -107,8 +104,9 @@ def read_generated_sections(project_id: str, paper_id: str) -> list[dict[str, An
 
     sections = []
     for output_path in sorted(section_dir.glob("*.json")):
-        with output_path.open("r", encoding="utf-8") as output_file:
-            sections.append(json.load(output_file))
+        section = safe_read_json(output_path)
+        if section:
+            sections.append(section)
 
     return sections
 
@@ -120,8 +118,9 @@ def read_locked_sections(project_id: str, paper_id: str) -> list[dict[str, Any]]
 
     sections = []
     for output_path in sorted(locked_dir.glob("*_LOCKED.json")):
-        with output_path.open("r", encoding="utf-8") as output_file:
-            sections.append(json.load(output_file))
+        section = safe_read_json(output_path)
+        if section:
+            sections.append(section)
 
     return sections
 
@@ -143,8 +142,7 @@ def read_full_paper(project_id: str, paper_id: str) -> dict[str, Any] | None:
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 def get_reference_bank_json_path(project_id: str, paper_id: str) -> Path:
@@ -164,8 +162,7 @@ def read_reference_bank(project_id: str, paper_id: str) -> dict[str, Any] | None
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 def get_formatting_report_path(project_id: str, paper_id: str) -> Path:
@@ -185,8 +182,7 @@ def read_formatting_report(project_id: str, paper_id: str) -> dict[str, Any] | N
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 @router.get("/{project_id}/planner")
@@ -202,8 +198,7 @@ def get_journal_plan(project_id: str) -> dict[str, Any]:
 def build_project_journal_plan(project_id: str) -> dict[str, Any]:
     journal_plan = build_journal_plan_from_outputs(project_id)
     output_path = get_journal_plan_output_path(project_id)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(journal_plan, output_file, indent=2, ensure_ascii=False)
+    journal_plan = safe_write_json(output_path, journal_plan, status="planned")
 
     return journal_plan
 
@@ -213,8 +208,7 @@ def build_project_paper_extraction(project_id: str, paper_id: str) -> dict[str, 
     paper_id = paper_id.upper()
     paper_extraction = build_paper_extraction_from_outputs(project_id, paper_id)
     output_path = get_paper_extraction_output_path(project_id, paper_id)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(paper_extraction, output_file, indent=2, ensure_ascii=False)
+    paper_extraction = safe_write_json(output_path, paper_extraction, status="extracted")
 
     return paper_extraction
 
@@ -234,8 +228,7 @@ def build_project_section_structure(project_id: str, paper_id: str) -> dict[str,
     paper_id = paper_id.upper()
     section_structure = build_section_structure_from_outputs(project_id, paper_id)
     output_path = get_section_structure_output_path(project_id, paper_id)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(section_structure, output_file, indent=2, ensure_ascii=False)
+    section_structure = safe_write_json(output_path, section_structure, status="structured")
 
     return section_structure
 
@@ -264,8 +257,7 @@ def generate_project_section(project_id: str, paper_id: str, section_name: str) 
         thesis_audit=read_thesis_audit(project_id),
     )
     output_path = get_generated_section_path(project_id, paper_id, section_name)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(section, output_file, indent=2, ensure_ascii=False)
+    section = safe_write_json(output_path, section, status="drafted")
 
     return section
 
@@ -318,10 +310,8 @@ def lock_project_section(project_id: str, paper_id: str, section_name: str) -> d
     locked = lock_section(section)
     generated_path = get_generated_section_path(project_id, paper_id, section_name)
     locked_path = get_locked_section_path(project_id, paper_id, section_name)
-    with generated_path.open("w", encoding="utf-8") as output_file:
-        json.dump(locked, output_file, indent=2, ensure_ascii=False)
-    with locked_path.open("w", encoding="utf-8") as output_file:
-        json.dump(locked, output_file, indent=2, ensure_ascii=False)
+    locked = safe_write_json(generated_path, locked, status="locked")
+    safe_write_json(locked_path, locked, status="locked")
 
     return locked
 
@@ -333,8 +323,7 @@ def integrate_project_full_paper(project_id: str, paper_id: str) -> dict[str, An
     json_path = get_full_paper_json_path(project_id, paper_id)
     markdown_path = get_full_paper_markdown_path(project_id, paper_id)
 
-    with json_path.open("w", encoding="utf-8") as output_file:
-        json.dump(full_paper, output_file, indent=2, ensure_ascii=False)
+    full_paper = safe_write_json(json_path, full_paper, status="integrated")
     with markdown_path.open("w", encoding="utf-8") as output_file:
         output_file.write(build_markdown(full_paper))
 
@@ -375,8 +364,7 @@ def build_project_references(project_id: str, paper_id: str) -> dict[str, Any]:
     json_path = get_reference_bank_json_path(project_id, paper_id)
     markdown_path = get_reference_bank_markdown_path(project_id, paper_id)
 
-    with json_path.open("w", encoding="utf-8") as output_file:
-        json.dump(reference_bank, output_file, indent=2, ensure_ascii=False)
+    reference_bank = safe_write_json(json_path, reference_bank, status="built")
     with markdown_path.open("w", encoding="utf-8") as output_file:
         output_file.write(build_reference_markdown(reference_bank))
 
@@ -405,8 +393,7 @@ def generate_project_formatted_docx(project_id: str, paper_id: str) -> dict[str,
         template_used="ICC2026",
     )
     report_path = get_formatting_report_path(project_id, paper_id)
-    with report_path.open("w", encoding="utf-8") as output_file:
-        json.dump(report, output_file, indent=2, ensure_ascii=False)
+    report = safe_write_json(report_path, report, status="formatted")
 
     return report
 

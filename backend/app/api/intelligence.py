@@ -5,6 +5,7 @@ from fastapi import APIRouter
 
 from app.api.parser import parse_project_uploads, read_parsed_thesis
 from app.api.upload import get_project_upload_dir, read_upload_metadata
+from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
 
@@ -68,8 +69,7 @@ def build_fallback_intelligence(project_id: str) -> dict[str, object]:
 def get_intelligence_summary(project_id: str) -> dict[str, object]:
     output_path = get_intelligence_output_path(project_id)
     if output_path.exists():
-        with output_path.open("r", encoding="utf-8") as output_file:
-            return json.load(output_file)
+        return safe_read_json(output_path) or build_fallback_intelligence(project_id)
 
     return build_fallback_intelligence(project_id)
 
@@ -140,8 +140,7 @@ def build_thesis_intelligence(project_id: str) -> dict[str, object]:
     }
 
     output_path = get_intelligence_output_path(project_id)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(intelligence, output_file, indent=2)
+    intelligence = safe_write_json(output_path, intelligence, status="built")
 
     return intelligence
 

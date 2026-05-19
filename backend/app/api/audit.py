@@ -10,6 +10,7 @@ from app.api.objective import read_objective_map
 from app.api.parser import read_parsed_thesis
 from app.api.table import read_table_map
 from app.services.audit_engine_service import build_thesis_audit
+from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 
@@ -29,8 +30,7 @@ def read_thesis_audit(project_id: str) -> dict[str, Any] | None:
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 def read_thesis_intelligence(project_id: str) -> dict[str, Any] | None:
@@ -38,8 +38,7 @@ def read_thesis_intelligence(project_id: str) -> dict[str, Any] | None:
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 @router.post("/{project_id}/run")
@@ -54,8 +53,7 @@ def run_project_audit(project_id: str) -> dict[str, Any]:
     )
 
     output_path = get_audit_output_path(project_id)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(audit_report, output_file, indent=2, ensure_ascii=False)
+    audit_report = safe_write_json(output_path, audit_report, status="audited")
 
     return audit_report
 

@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from app.api.intelligence import get_intelligence_output_path
 from app.api.parser import read_parsed_thesis
 from app.services.objective_mapper_service import build_objective_map
+from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/objective", tags=["objective"])
 
@@ -26,8 +27,7 @@ def read_objective_map(project_id: str) -> dict[str, Any] | None:
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 def read_thesis_intelligence(project_id: str) -> dict[str, Any] | None:
@@ -35,8 +35,7 @@ def read_thesis_intelligence(project_id: str) -> dict[str, Any] | None:
     if not output_path.exists():
         return None
 
-    with output_path.open("r", encoding="utf-8") as output_file:
-        return json.load(output_file)
+    return safe_read_json(output_path)
 
 
 @router.post("/{project_id}/map")
@@ -55,8 +54,7 @@ def map_project_objectives(project_id: str) -> dict[str, Any]:
     )
 
     output_path = get_objective_map_output_path(project_id)
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(objective_map, output_file, indent=2, ensure_ascii=False)
+    objective_map = safe_write_json(output_path, objective_map, status="mapped")
 
     return objective_map
 

@@ -1,5 +1,12 @@
 export const API_BASE_URL = "http://127.0.0.1:8000";
 
+type StandardApiResponse<T> = {
+  success: boolean;
+  status: string;
+  message: string;
+  data: T;
+};
+
 export type HealthResponse = {
   status: string;
   service: string;
@@ -420,7 +427,26 @@ async function request<T>(path: string): Promise<T> {
     throw new Error(`API request failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<T>;
+  return parseApiResponse<T>(response);
+}
+
+async function parseApiResponse<T>(response: Response): Promise<T> {
+  const payload = (await response.json()) as T | StandardApiResponse<T>;
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "success" in payload &&
+    "data" in payload
+  ) {
+    const standardPayload = payload as StandardApiResponse<T>;
+    if (!standardPayload.success) {
+      throw new Error(standardPayload.message || "API request failed");
+    }
+
+    return standardPayload.data;
+  }
+
+  return payload as T;
 }
 
 export function getHealth() {
@@ -453,7 +479,7 @@ export async function parseThesis(projectId: string) {
     throw new Error(`Parse thesis failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<ParsedThesis>;
+  return parseApiResponse<ParsedThesis>(response);
 }
 
 export function getParsedThesis(projectId: string) {
@@ -472,7 +498,7 @@ export async function buildCitationMap(projectId: string) {
     throw new Error(`Build citation map failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<CitationMap>;
+  return parseApiResponse<CitationMap>(response);
 }
 
 export function getCitationMap(projectId: string) {
@@ -491,7 +517,7 @@ export async function buildObjectiveMap(projectId: string) {
     throw new Error(`Build objective map failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<ObjectiveMap>;
+  return parseApiResponse<ObjectiveMap>(response);
 }
 
 export function getObjectiveMap(projectId: string) {
@@ -510,7 +536,7 @@ export async function buildTableMap(projectId: string) {
     throw new Error(`Build table map failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<TableMap>;
+  return parseApiResponse<TableMap>(response);
 }
 
 export function getTableMap(projectId: string) {
@@ -529,7 +555,7 @@ export async function runThesisAudit(projectId: string) {
     throw new Error(`Run thesis audit failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<ThesisAudit>;
+  return parseApiResponse<ThesisAudit>(response);
 }
 
 export function getThesisAudit(projectId: string) {
@@ -548,7 +574,7 @@ export async function buildKnowledgeGraph(projectId: string) {
     throw new Error(`Build knowledge graph failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<KnowledgeGraph>;
+  return parseApiResponse<KnowledgeGraph>(response);
 }
 
 export function getKnowledgeGraph(projectId: string) {
@@ -567,7 +593,7 @@ export async function buildThesisIntelligence(projectId: string) {
     throw new Error(`Build intelligence failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<IntelligenceSummary>;
+  return parseApiResponse<IntelligenceSummary>(response);
 }
 
 export function getJournalPlanner(projectId: string) {
@@ -586,7 +612,7 @@ export async function buildJournalPlanner(projectId: string) {
     throw new Error(`Build journal planner failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<JournalPlanner>;
+  return parseApiResponse<JournalPlanner>(response);
 }
 
 export async function buildPaperExtraction(projectId: string, paperId: string) {
@@ -604,7 +630,7 @@ export async function buildPaperExtraction(projectId: string, paperId: string) {
     throw new Error(`Build paper extraction failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<PaperExtraction>;
+  return parseApiResponse<PaperExtraction>(response);
 }
 
 export function getPaperExtraction(projectId: string, paperId: string) {
@@ -626,7 +652,7 @@ export async function buildSectionStructure(projectId: string, paperId: string) 
     throw new Error(`Build section structure failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<SectionStructure>;
+  return parseApiResponse<SectionStructure>(response);
 }
 
 export function getSectionStructure(projectId: string, paperId: string) {
@@ -648,7 +674,7 @@ export async function generateSection(projectId: string, paperId: string, sectio
     throw new Error(`Generate section failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<GeneratedSection>;
+  return parseApiResponse<GeneratedSection>(response);
 }
 
 export async function getGeneratedSections(projectId: string, paperId: string) {
@@ -680,7 +706,7 @@ export async function lockSection(projectId: string, paperId: string, sectionNam
     throw new Error(`Lock section failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<GeneratedSection>;
+  return parseApiResponse<GeneratedSection>(response);
 }
 
 export async function integrateFullPaper(projectId: string, paperId: string) {
@@ -698,7 +724,7 @@ export async function integrateFullPaper(projectId: string, paperId: string) {
     throw new Error(`Integrate full paper failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<FullPaper>;
+  return parseApiResponse<FullPaper>(response);
 }
 
 export function getFullPaper(projectId: string, paperId: string) {
@@ -720,7 +746,7 @@ export async function buildReferences(projectId: string, paperId: string) {
     throw new Error(`Build references failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<ReferenceBank>;
+  return parseApiResponse<ReferenceBank>(response);
 }
 
 export function getReferences(projectId: string, paperId: string) {
@@ -742,7 +768,7 @@ export async function generateFormattedDocx(projectId: string, paperId: string) 
     throw new Error(`Generate formatted DOCX failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<FormattingReport>;
+  return parseApiResponse<FormattingReport>(response);
 }
 
 export function getFormattingReport(projectId: string, paperId: string) {
@@ -773,7 +799,7 @@ export async function runFullPipeline(projectId: string) {
     throw new Error(`Run full pipeline failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<WorkflowRunSummary>;
+  return parseApiResponse<WorkflowRunSummary>(response);
 }
 
 export function getWorkflowStatus(projectId: string) {
@@ -800,7 +826,7 @@ export async function uploadThesisFile(
     throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<UploadedThesisFile & { project_id: string }>;
+  return parseApiResponse<UploadedThesisFile & { project_id: string }>(response);
 }
 
 export async function getUploadedFiles(projectId: string) {
