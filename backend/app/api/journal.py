@@ -12,6 +12,7 @@ from app.api.objective import read_objective_map
 from app.api.parser import read_parsed_thesis
 from app.api.table import read_table_map
 from app.api.upload import read_upload_metadata
+from app.services.artifact_registry_service import register_artifact
 from app.services.formatting_engine_service import generate_formatted_docx
 from app.services.full_paper_service import build_full_paper, build_markdown
 from app.services.journal_planner_service import build_journal_plan
@@ -199,6 +200,7 @@ def build_project_journal_plan(project_id: str) -> dict[str, Any]:
     journal_plan = build_journal_plan_from_outputs(project_id)
     output_path = get_journal_plan_output_path(project_id)
     journal_plan = safe_write_json(output_path, journal_plan, status="planned")
+    register_artifact(project_id, "journal_planner", output_path, status="planned")
 
     return journal_plan
 
@@ -209,6 +211,7 @@ def build_project_paper_extraction(project_id: str, paper_id: str) -> dict[str, 
     paper_extraction = build_paper_extraction_from_outputs(project_id, paper_id)
     output_path = get_paper_extraction_output_path(project_id, paper_id)
     paper_extraction = safe_write_json(output_path, paper_extraction, status="extracted")
+    register_artifact(project_id, "paper_extraction", output_path, paper_id=paper_id, status="extracted")
 
     return paper_extraction
 
@@ -229,6 +232,7 @@ def build_project_section_structure(project_id: str, paper_id: str) -> dict[str,
     section_structure = build_section_structure_from_outputs(project_id, paper_id)
     output_path = get_section_structure_output_path(project_id, paper_id)
     section_structure = safe_write_json(output_path, section_structure, status="structured")
+    register_artifact(project_id, "section_structure", output_path, paper_id=paper_id, status="structured")
 
     return section_structure
 
@@ -258,6 +262,14 @@ def generate_project_section(project_id: str, paper_id: str, section_name: str) 
     )
     output_path = get_generated_section_path(project_id, paper_id, section_name)
     section = safe_write_json(output_path, section, status="drafted")
+    register_artifact(
+        project_id,
+        "section_writer",
+        output_path,
+        paper_id=paper_id,
+        section_name=section_name,
+        status="drafted",
+    )
 
     return section
 
@@ -312,6 +324,22 @@ def lock_project_section(project_id: str, paper_id: str, section_name: str) -> d
     locked_path = get_locked_section_path(project_id, paper_id, section_name)
     locked = safe_write_json(generated_path, locked, status="locked")
     safe_write_json(locked_path, locked, status="locked")
+    register_artifact(
+        project_id,
+        "section_writer",
+        generated_path,
+        paper_id=paper_id,
+        section_name=section_name,
+        status="locked",
+    )
+    register_artifact(
+        project_id,
+        "locked_section",
+        locked_path,
+        paper_id=paper_id,
+        section_name=section_name,
+        status="locked",
+    )
 
     return locked
 
@@ -326,6 +354,8 @@ def integrate_project_full_paper(project_id: str, paper_id: str) -> dict[str, An
     full_paper = safe_write_json(json_path, full_paper, status="integrated")
     with markdown_path.open("w", encoding="utf-8") as output_file:
         output_file.write(build_markdown(full_paper))
+    register_artifact(project_id, "full_paper", json_path, paper_id=paper_id, status="integrated")
+    register_artifact(project_id, "full_paper", markdown_path, paper_id=paper_id, status="integrated")
 
     return full_paper
 
@@ -367,6 +397,8 @@ def build_project_references(project_id: str, paper_id: str) -> dict[str, Any]:
     reference_bank = safe_write_json(json_path, reference_bank, status="built")
     with markdown_path.open("w", encoding="utf-8") as output_file:
         output_file.write(build_reference_markdown(reference_bank))
+    register_artifact(project_id, "reference_bank", json_path, paper_id=paper_id, status="built")
+    register_artifact(project_id, "reference_bank", markdown_path, paper_id=paper_id, status="built")
 
     return reference_bank
 
@@ -394,6 +426,15 @@ def generate_project_formatted_docx(project_id: str, paper_id: str) -> dict[str,
     )
     report_path = get_formatting_report_path(project_id, paper_id)
     report = safe_write_json(report_path, report, status="formatted")
+    register_artifact(project_id, "formatting_report", report_path, paper_id=paper_id, status="formatted")
+    register_artifact(
+        project_id,
+        "formatted_docx",
+        get_formatted_docx_path(project_id, paper_id),
+        paper_id=paper_id,
+        file_format="docx",
+        status="formatted",
+    )
 
     return report
 

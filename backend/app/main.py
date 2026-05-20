@@ -6,7 +6,7 @@ from fastapi import HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from app.api import audit, citation, db, health, intelligence, journal, knowledge_graph, objective, parser, projects, table, upload, workflow
+from app.api import artifacts, audit, citation, db, health, intelligence, journal, knowledge_graph, objective, parser, projects, table, upload, workflow
 from app.core.config import settings
 from app.utils.file_utils import configure_file_logging
 from app.utils.response_utils import api_response, is_standard_response
@@ -92,6 +92,7 @@ async def unhandled_exception_handler(_request: Request, exc: Exception):
 
 app.include_router(health.router)
 app.include_router(db.router)
+app.include_router(artifacts.router)
 app.include_router(projects.router)
 app.include_router(upload.router)
 app.include_router(intelligence.router)

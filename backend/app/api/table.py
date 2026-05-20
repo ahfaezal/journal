@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from app.api.parser import read_parsed_thesis
+from app.services.artifact_registry_service import register_artifact
 from app.services.table_mapper_service import build_table_map
 from app.utils.file_utils import safe_read_json, safe_write_json
 
@@ -41,6 +42,7 @@ def map_project_tables(project_id: str) -> dict[str, Any]:
     table_map = build_table_map(project_id=project_id, parsed_thesis=parsed_thesis)
     output_path = get_table_map_output_path(project_id)
     table_map = safe_write_json(output_path, table_map, status="mapped")
+    register_artifact(project_id, "table_map", output_path, status="mapped")
 
     return table_map
 

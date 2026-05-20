@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from app.api.upload import get_project_upload_dir
+from app.services.artifact_registry_service import register_artifact
 from app.services.parser_service import parse_uploaded_documents
 from app.utils.file_utils import safe_read_json, safe_write_json
 
@@ -43,6 +44,7 @@ def parse_project_uploads(project_id: str) -> dict[str, Any]:
 
     output_path = get_parsed_output_path(project_id)
     parsed_output = safe_write_json(output_path, parsed_output, status="parsed")
+    register_artifact(project_id, "parser", output_path, status="parsed")
 
     return parsed_output
 

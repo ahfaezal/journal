@@ -437,6 +437,30 @@ export type WorkflowRunSummary = {
   generated_at: string;
 };
 
+export type ArtifactRegistryItem = {
+  artifact_id: string;
+  artifact_type: string;
+  paper_id: string;
+  section_name: string;
+  file_path: string;
+  file_format: string;
+  version: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ArtifactRegistry = {
+  project_id: string;
+  total_artifacts: number;
+  grouped_artifacts: Record<string, ArtifactRegistryItem[]>;
+  latest_artifacts: Record<string, ArtifactRegistryItem>;
+  counts_by_type: Record<string, number>;
+  latest_docx: ArtifactRegistryItem | null;
+  latest_markdown: ArtifactRegistryItem | null;
+  latest_audit: ArtifactRegistryItem | null;
+};
+
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -864,6 +888,10 @@ export async function runFullPipeline(projectId: string) {
 
 export function getWorkflowStatus(projectId: string) {
   return request<WorkflowRunSummary>(`/workflow/${projectId}/status`);
+}
+
+export function getArtifacts(projectId: string) {
+  return request<ArtifactRegistry>(`/artifacts/${projectId}`);
 }
 
 export async function uploadThesisFile(

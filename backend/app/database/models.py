@@ -81,12 +81,15 @@ class GeneratedArtifact(Base, TimestampMixin):
     __tablename__ = "generated_artifacts"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    artifact_id: Mapped[str] = mapped_column(String(36), unique=True, index=True, nullable=False, default=new_uuid)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
-    paper_id: Mapped[str | None] = mapped_column(String(64), index=True)
     artifact_type: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    paper_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    section_name: Mapped[str | None] = mapped_column(String(128), index=True)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_format: Mapped[str] = mapped_column(String(32), nullable=False)
     version: Mapped[str] = mapped_column(String(32), default="v1", nullable=False)
     status: Mapped[str] = mapped_column(String(64), default="generated", nullable=False)
-    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
     project: Mapped["Project"] = relationship(back_populates="artifacts")

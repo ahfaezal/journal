@@ -28,12 +28,14 @@ import {
 import { AppShell } from "@/src/components/layouts/AppShell";
 import {
   getHealth,
+  getArtifacts,
   getIntelligence,
   getJournalPlanner,
   getProject,
   getProjects,
   getWorkflowStatus,
   runFullPipeline,
+  type ArtifactRegistry,
   type HealthResponse,
   type IntelligenceSummary,
   type JournalPlanner,
@@ -179,6 +181,7 @@ type DashboardData = {
   intelligence: IntelligenceSummary | null;
   journalPlanner: JournalPlanner | null;
   workflowRun: WorkflowRunSummary | null;
+  artifacts: ArtifactRegistry | null;
 };
 
 export default function DashboardPage() {
@@ -189,6 +192,7 @@ export default function DashboardPage() {
     intelligence: null,
     journalPlanner: null,
     workflowRun: null,
+    artifacts: null,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
@@ -205,11 +209,12 @@ export default function DashboardPage() {
         const [health, projectsResponse] = await Promise.all([getHealth(), getProjects()]);
         const activeProjectId = projectsResponse[0]?.project_id || projectsResponse[0]?.id;
         const fallbackProjectId = activeProjectId || "PROJECT_001";
-        const [activeProject, intelligence, journalPlanner, workflowRun] = await Promise.all([
+        const [activeProject, intelligence, journalPlanner, workflowRun, artifacts] = await Promise.all([
           activeProjectId ? getProject(activeProjectId) : Promise.resolve(null),
           getIntelligence(fallbackProjectId),
           getJournalPlanner(fallbackProjectId),
           getWorkflowStatus(fallbackProjectId).catch(() => null),
+          getArtifacts(fallbackProjectId).catch(() => null),
         ]);
 
         if (!cancelled) {
@@ -220,6 +225,7 @@ export default function DashboardPage() {
             intelligence,
             journalPlanner,
             workflowRun,
+            artifacts,
           });
         }
       } catch (loadError) {
@@ -270,6 +276,7 @@ export default function DashboardPage() {
   const intelligence = data.intelligence;
   const journalPlanner = data.journalPlanner;
   const workflowRun = data.workflowRun;
+  const artifacts = data.artifacts;
   const auditIssueCount = intelligence
     ? Object.values(intelligence.audit).reduce((total, value) => total + value, 0)
     : 8;
@@ -791,6 +798,66 @@ export default function DashboardPage() {
               No workflow run found yet. Use Quick Actions to run the full workflow test.
             </div>
           )}
+        </Card>
+
+        <Card>
+          <SectionTitle icon={<Database className="size-5" />} title="Artifact Registry" />
+          <div className="grid gap-5 xl:grid-cols-[0.7fr_1.3fr_1fr]">
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Total artifacts
+              </div>
+              <div className="mt-2 text-3xl font-bold text-slate-950">
+                {artifacts?.total_artifacts ?? 0}
+              </div>
+              <div className="mt-2 text-[15px] leading-6 text-slate-600">
+                Metadata index for generated JSON, Markdown, and DOCX outputs.
+              </div>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Latest generated outputs
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {Object.entries(artifacts?.latest_artifacts ?? {})
+                  .slice(0, 6)
+                  .map(([artifactType, artifact]) => (
+                    <div className="rounded-xl bg-white p-3" key={artifactType}>
+                      <div className="text-[14px] font-semibold text-slate-900">
+                        {artifactType.replaceAll("_", " ")}
+                      </div>
+                      <div className="mt-1 truncate text-[12px] text-slate-500">
+                        {artifact.file_path}
+                      </div>
+                    </div>
+                  ))}
+                {!artifacts?.total_artifacts ? (
+                  <div className="rounded-xl bg-white p-3 text-[14px] font-medium text-slate-500">
+                    No registered artifacts yet.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Latest key artifacts
+              </div>
+              <div className="mt-3 space-y-2">
+                {[
+                  ["Formatted DOCX", artifacts?.latest_docx?.updated_at || "Not generated"],
+                  ["Markdown", artifacts?.latest_markdown?.updated_at || "Not generated"],
+                  ["Audit", artifacts?.latest_audit?.updated_at || "Not generated"],
+                ].map(([label, value]) => (
+                  <div className="flex items-center justify-between rounded-xl bg-white p-3" key={label}>
+                    <span className="text-[14px] font-semibold text-slate-700">{label}</span>
+                    <span className="max-w-40 truncate text-[12px] font-medium text-slate-500">
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </Card>
       </div>
     </AppShell>

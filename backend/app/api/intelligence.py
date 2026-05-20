@@ -5,6 +5,7 @@ from fastapi import APIRouter
 
 from app.api.parser import parse_project_uploads, read_parsed_thesis
 from app.api.upload import get_project_upload_dir, read_upload_metadata
+from app.services.artifact_registry_service import register_artifact
 from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
@@ -141,6 +142,7 @@ def build_thesis_intelligence(project_id: str) -> dict[str, object]:
 
     output_path = get_intelligence_output_path(project_id)
     intelligence = safe_write_json(output_path, intelligence, status="built")
+    register_artifact(project_id, "intelligence", output_path, status="built")
 
     return intelligence
 

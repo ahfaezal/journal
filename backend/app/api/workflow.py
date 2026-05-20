@@ -31,6 +31,7 @@ from app.api.knowledge_graph import get_knowledge_graph_output_path, build_proje
 from app.api.objective import get_objective_map_output_path, map_project_objectives
 from app.api.parser import get_parsed_output_path, parse_project_thesis
 from app.api.table import get_table_map_output_path, map_project_tables
+from app.services.artifact_registry_service import register_artifact
 from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
@@ -162,6 +163,13 @@ def infer_failed_step(completed_steps: list[dict[str, str]]) -> str:
 def write_workflow_summary(project_id: str, summary: dict[str, Any]) -> None:
     output_path = get_workflow_run_path(project_id)
     safe_write_json(output_path, summary, status=summary.get("pipeline_status", "completed"))
+    register_artifact(
+        project_id,
+        "workflow_run",
+        output_path,
+        paper_id=PAPER_ID,
+        status=summary.get("pipeline_status", "completed"),
+    )
 
 
 def build_workflow_summary(

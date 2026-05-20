@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.intelligence import get_intelligence_output_path
 from app.api.parser import read_parsed_thesis
+from app.services.artifact_registry_service import register_artifact
 from app.services.objective_mapper_service import build_objective_map
 from app.utils.file_utils import safe_read_json, safe_write_json
 
@@ -55,6 +56,7 @@ def map_project_objectives(project_id: str) -> dict[str, Any]:
 
     output_path = get_objective_map_output_path(project_id)
     objective_map = safe_write_json(output_path, objective_map, status="mapped")
+    register_artifact(project_id, "objective_map", output_path, status="mapped")
 
     return objective_map
 
