@@ -21,12 +21,14 @@ import { AppShell } from "@/src/components/layouts/AppShell";
 import {
   buildSectionStructure,
   generateSection,
+  getAppliedRevisions,
   getFullPaper,
   getFullPaperMarkdownDownloadUrl,
   getGeneratedSections,
   getSectionStructure,
   integrateFullPaper,
   lockSection,
+  type AppliedRevision,
   type FullPaper,
   type GeneratedSection,
   type SectionStructure,
@@ -162,6 +164,7 @@ export default function SectionWriterPage() {
   const [selectedPaper, setSelectedPaper] = useState("PAPER_1");
   const [structure, setStructure] = useState<SectionStructure>(fallbackStructure);
   const [generatedSections, setGeneratedSections] = useState<Record<string, GeneratedSection>>({});
+  const [appliedRevisions, setAppliedRevisions] = useState<AppliedRevision[]>([]);
   const [fullPaper, setFullPaper] = useState<FullPaper | null>(null);
   const [selectedSectionName, setSelectedSectionName] = useState("Findings");
   const [isLoading, setIsLoading] = useState(true);
@@ -178,6 +181,9 @@ export default function SectionWriterPage() {
         getGeneratedSections(PROJECT_ID, paperId),
         getFullPaper(PROJECT_ID, paperId),
       ]);
+      const appliedResult = await getAppliedRevisions(PROJECT_ID, paperId).catch(() => ({
+        applied_revisions: [],
+      }));
 
       const data =
         structureResult.status === "fulfilled"
@@ -188,6 +194,7 @@ export default function SectionWriterPage() {
 
       setStructure(data);
       setGeneratedSections(indexGeneratedSections(generated));
+      setAppliedRevisions(appliedResult.applied_revisions);
       setFullPaper(integrated);
       setSelectedSectionName((current) =>
         data.sections.some((section) => section.section_name === current)
@@ -206,6 +213,7 @@ export default function SectionWriterPage() {
       });
       setStructure(fallbackStructureForPaper(paperId));
       setGeneratedSections({});
+      setAppliedRevisions([]);
       setFullPaper(null);
       setNotice("No section structure generated yet.");
     } finally {
@@ -310,6 +318,12 @@ export default function SectionWriterPage() {
   const selectedGeneratedSection = selectedSection
     ? generatedSections[selectedSection.section_name]
     : undefined;
+  const selectedAppliedRevisions = selectedSection
+    ? appliedRevisions.filter(
+        (revision) =>
+          revision.affected_section.toLowerCase() === selectedSection.section_name.toLowerCase(),
+      )
+    : [];
 
   return (
     <AppShell>
@@ -638,6 +652,25 @@ export default function SectionWriterPage() {
                       : selectedSection?.audit_warnings ?? []
                     ).map((warning) => <div key={warning}>{warning}</div>)
                   : <div>No section-level audit warning.</div>}
+              </div>
+            </div>
+            <div className="mt-5 rounded-xl border border-cyan-100 bg-cyan-50 p-4">
+              <div className="text-[15px] font-semibold text-slate-950">Version timeline</div>
+              <div className="mt-3 space-y-2">
+                <div className="rounded-lg bg-white px-3 py-2 text-[14px] leading-6 text-slate-700">
+                  Current active version: {selectedGeneratedSection?.version ?? "none"}
+                </div>
+                {selectedAppliedRevisions.length ? (
+                  selectedAppliedRevisions.map((revision) => (
+                    <div className="rounded-lg bg-white px-3 py-2 text-[14px] leading-6 text-slate-700" key={revision.revision_id}>
+                      {revision.revision_id}: {revision.before_version} {"->"} {revision.revised_version} by {revision.applied_by}
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg bg-white px-3 py-2 text-[14px] leading-6 text-slate-500">
+                    No applied revision yet for this section.
+                  </div>
+                )}
               </div>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">

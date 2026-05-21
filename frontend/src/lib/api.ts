@@ -527,6 +527,39 @@ export type RevisionReport = {
   status?: string;
 };
 
+export type AppliedRevision = {
+  project_id: string;
+  paper_id: string;
+  revision_id: string;
+  linked_reviewer_issue: string;
+  affected_section: string;
+  before_version: string;
+  revised_version: string;
+  before_path: string;
+  revised_path: string;
+  current_section_path: string;
+  revision_timestamp: string;
+  applied_by: string;
+  ai_enabled: boolean;
+  ai_model: string;
+  apply_mode: string;
+  status: string;
+  version: string;
+};
+
+export type AppliedRevisionResponse = {
+  applied_revision: AppliedRevision;
+  revised_section: GeneratedSection;
+};
+
+export type AppliedRevisionsList = {
+  project_id: string;
+  paper_id: string;
+  applied_revisions: AppliedRevision[];
+  total_applied: number;
+  status: string;
+};
+
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -1025,6 +1058,25 @@ export async function generateRevisionReport(projectId: string, paperId: string)
 
 export function getRevisionReport(projectId: string, paperId: string) {
   return request<RevisionReport>(`/revision/${projectId}/${paperId}`);
+}
+
+export async function applyRevision(projectId: string, paperId: string, revisionId: string) {
+  const response = await fetch(`${API_BASE_URL}/revision/${projectId}/${paperId}/apply/${revisionId}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Apply revision failed: ${response.status} ${response.statusText}`);
+  }
+
+  return parseApiResponse<AppliedRevisionResponse>(response);
+}
+
+export function getAppliedRevisions(projectId: string, paperId: string) {
+  return request<AppliedRevisionsList>(`/revision/${projectId}/${paperId}/applied`);
 }
 
 export async function uploadThesisFile(

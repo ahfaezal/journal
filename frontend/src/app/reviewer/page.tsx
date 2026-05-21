@@ -13,10 +13,13 @@ import {
 
 import { AppShell } from "@/src/components/layouts/AppShell";
 import {
+  applyRevision,
   generateRevisionReport,
+  getAppliedRevisions,
   getReviewerReport,
   getRevisionReport,
   runReviewerSimulation,
+  type AppliedRevision,
   type ReviewerReport,
   type RevisionReport,
 } from "@/src/lib/api";
@@ -159,6 +162,8 @@ export default function ReviewerPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [isGeneratingRevision, setIsGeneratingRevision] = useState(false);
+  const [activeApplyRevision, setActiveApplyRevision] = useState<string | null>(null);
+  const [appliedRevisions, setAppliedRevisions] = useState<AppliedRevision[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
 
   async function loadReviewerReport(paperId: string) {
@@ -170,12 +175,17 @@ export default function ReviewerPage() {
         ...fallbackRevisionReport,
         paper_id: paperId,
       }));
+      const applied = await getAppliedRevisions(PROJECT_ID, paperId).catch(() => ({
+        applied_revisions: [],
+      }));
       setRevisionReport(revision);
+      setAppliedRevisions(applied.applied_revisions);
       setNotice(null);
     } catch (error) {
       console.error("Load reviewer report failed", { paperId, error });
       setReport({ ...fallbackReport, paper_id: paperId });
       setRevisionReport({ ...fallbackRevisionReport, paper_id: paperId });
+      setAppliedRevisions([]);
       setNotice("Reviewer report has not been generated yet.");
     } finally {
       setIsLoading(false);
@@ -224,6 +234,34 @@ export default function ReviewerPage() {
       );
     } finally {
       setIsGeneratingRevision(false);
+    }
+  }
+
+  async function handleApplyRevision(revisionId: string) {
+    try {
+      setActiveApplyRevision(revisionId);
+      setNotice(null);
+      const result = await applyRevision(PROJECT_ID, selectedPaper, revisionId);
+      setAppliedRevisions((current) => [
+        ...current.filter((item) => item.revision_id !== revisionId),
+        result.applied_revision,
+      ]);
+      setRevisionReport((current) => ({
+        ...current,
+        revisions: current.revisions.map((revision) =>
+          revision.revision_id === revisionId
+            ? { ...revision, apply_status: "applied" }
+            : revision,
+        ),
+      }));
+      setNotice(`Revision ${revisionId} applied to ${result.applied_revision.affected_section}.`);
+    } catch (error) {
+      console.error("Apply revision failed", { selectedPaper, revisionId, error });
+      setNotice(
+        error instanceof Error ? error.message : "Unable to apply revision.",
+      );
+    } finally {
+      setActiveApplyRevision(null);
     }
   }
 
@@ -305,7 +343,11 @@ export default function ReviewerPage() {
               onClick={handleRunSimulation}
               type="button"
             >
-              {isRunning ? "Running Simulation" : "Run Reviewer Simulation"}
+              {isRunning
+                ? "Running Simulation"
+                : appliedRevisions.length
+                  ? "Re-run Reviewer Simulation"
+                  : "Run Reviewer Simulation"}
               <ArrowRight className="size-4" />
             </button>
           </div>
@@ -343,6 +385,7 @@ export default function ReviewerPage() {
             className={`rounded-2xl border p-4 text-[15px] font-semibold ${
               notice === "Reviewer simulation completed successfully."
               || notice === "Revision suggestions generated successfully."
+              || notice.startsWith("Revision ")
                 ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                 : "border-amber-200 bg-amber-50 text-amber-800"
             }`}
@@ -491,7 +534,7 @@ export default function ReviewerPage() {
               </p>
             </div>
             <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] transition hover:bg-cyan-300">
-              Apply Reviewer Suggestions
+              {appliedRevisions.length ? "Re-run Reviewer Simulation" : "Apply Reviewer Suggestions"}
               <ArrowRight className="size-4" />
             </button>
           </div>
@@ -516,6 +559,9 @@ export default function ReviewerPage() {
             </span>
             <span className="rounded-full bg-slate-100 px-3 py-1.5 text-[13px] font-semibold text-slate-600">
               {revisionReport.total_revisions} revision item(s)
+            </span>
+            <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[13px] font-semibold text-emerald-700">
+              {appliedRevisions.length} applied
             </span>
           </div>
           <div className="mt-5 space-y-4">
@@ -569,10 +615,16 @@ export default function ReviewerPage() {
                       <p className="mt-1">{revision.comparison_summary}</p>
                     </div>
                     <button
-                      className="inline-flex h-11 items-center justify-center gap-2 self-start rounded-xl bg-cyan-600 px-4 text-[14px] font-semibold text-white transition hover:bg-cyan-500"
+                      className="inline-flex h-11 items-center justify-center gap-2 self-start rounded-xl bg-cyan-600 px-4 text-[14px] font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      disabled={revision.apply_status === "applied" || activeApplyRevision === revision.revision_id}
+                      onClick={() => handleApplyRevision(revision.revision_id)}
                       type="button"
                     >
-                      Apply Revision
+                      {revision.apply_status === "applied"
+                        ? "Applied"
+                        : activeApplyRevision === revision.revision_id
+                          ? "Applying"
+                          : "Apply Revision"}
                       <ArrowRight className="size-4" />
                     </button>
                   </div>
