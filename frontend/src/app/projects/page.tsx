@@ -17,8 +17,10 @@ import { AppShell } from "@/src/components/layouts/AppShell";
 import {
   createPaper,
   getPapers,
+  getPaperProgress,
   getProjectActivities,
   getProjects,
+  type PaperProgressItem,
   type PaperWorkspace,
   type Project,
   type WorkflowActivity,
@@ -48,6 +50,7 @@ function Card({
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [papers, setPapers] = useState<PaperWorkspace[]>([]);
+  const [paperProgress, setPaperProgress] = useState<PaperProgressItem[]>([]);
   const [activities, setActivities] = useState<WorkflowActivity[]>([]);
   const [activeTab, setActiveTab] = useState<"overview" | "papers" | "activity">("overview");
   const [isCreatingPaper, setIsCreatingPaper] = useState(false);
@@ -63,14 +66,16 @@ export default function ProjectsPage() {
         setError(null);
         const result = await getProjects();
         const projectId = result[0]?.project_id || result[0]?.id || "PROJECT_001";
-        const [projectActivities, projectPapers] = await Promise.all([
+        const [projectActivities, projectPapers, progress] = await Promise.all([
           getProjectActivities(projectId).catch(() => []),
           getPapers(projectId).catch(() => []),
+          getPaperProgress(projectId).catch(() => null),
         ]);
         if (!cancelled) {
           setProjects(result);
           setActivities(projectActivities);
           setPapers(projectPapers);
+          setPaperProgress(progress?.papers ?? []);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -338,6 +343,38 @@ export default function ProjectsPage() {
                   Select Activity to review project workflow events from upload through submission.
                 </div>
               )}
+            </Card>
+
+            <Card>
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700">
+                  <FileText className="size-5" />
+                </div>
+                <h2 className="text-lg font-semibold text-slate-950">Paper Status Table</h2>
+              </div>
+              <div className="space-y-3">
+                {(paperProgress.length ? paperProgress : papers.map((paper) => ({
+                  ...paper,
+                  progress_percent: 0,
+                  completed_steps: [],
+                  pending_steps: [],
+                }))).map((paper) => (
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3" key={paper.paper_id}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[13px] font-semibold tracking-[0.14em] text-cyan-700">
+                          {paper.paper_id}
+                        </div>
+                        <div className="mt-1 text-[14px] font-semibold text-slate-950">{paper.title}</div>
+                      </div>
+                      <span className="text-[13px] font-bold text-cyan-700">{paper.progress_percent}%</span>
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-white">
+                      <div className="h-2 rounded-full bg-cyan-600" style={{ width: `${paper.progress_percent}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
 
             <Card>

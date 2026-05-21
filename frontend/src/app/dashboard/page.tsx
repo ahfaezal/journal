@@ -31,6 +31,7 @@ import {
   getArtifacts,
   getIntelligence,
   getJournalPlanner,
+  getPaperProgress,
   getPapers,
   getProjectActivities,
   getProject,
@@ -42,6 +43,7 @@ import {
   type IntelligenceSummary,
   type JournalPlanner,
   type PaperWorkspace,
+  type PaperProgress,
   type Project,
   type ProjectDetail,
   type WorkflowActivity,
@@ -188,6 +190,7 @@ type DashboardData = {
   artifacts: ArtifactRegistry | null;
   activities: WorkflowActivity[];
   papers: PaperWorkspace[];
+  paperProgress: PaperProgress | null;
 };
 
 export default function DashboardPage() {
@@ -201,6 +204,7 @@ export default function DashboardPage() {
     artifacts: null,
     activities: [],
     papers: [],
+    paperProgress: null,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
@@ -217,7 +221,7 @@ export default function DashboardPage() {
         const [health, projectsResponse] = await Promise.all([getHealth(), getProjects()]);
         const activeProjectId = projectsResponse[0]?.project_id || projectsResponse[0]?.id;
         const fallbackProjectId = activeProjectId || "PROJECT_001";
-        const [activeProject, intelligence, journalPlanner, workflowRun, artifacts, activities, papers] = await Promise.all([
+        const [activeProject, intelligence, journalPlanner, workflowRun, artifacts, activities, papers, paperProgress] = await Promise.all([
           activeProjectId ? getProject(activeProjectId) : Promise.resolve(null),
           getIntelligence(fallbackProjectId),
           getJournalPlanner(fallbackProjectId),
@@ -225,6 +229,7 @@ export default function DashboardPage() {
           getArtifacts(fallbackProjectId).catch(() => null),
           getProjectActivities(fallbackProjectId).catch(() => []),
           getPapers(fallbackProjectId).catch(() => []),
+          getPaperProgress(fallbackProjectId).catch(() => null),
         ]);
 
         if (!cancelled) {
@@ -238,6 +243,7 @@ export default function DashboardPage() {
             artifacts,
             activities,
             papers,
+            paperProgress,
           });
         }
       } catch (loadError) {
@@ -292,6 +298,7 @@ export default function DashboardPage() {
   const workflowRun = data.workflowRun;
   const artifacts = data.artifacts;
   const activities = data.activities;
+  const paperProgress = data.paperProgress;
   const latestRegeneration = artifacts?.latest_artifacts?.auto_regeneration;
   const auditIssueCount = intelligence
     ? Object.values(intelligence.audit).reduce((total, value) => total + value, 0)
@@ -571,6 +578,47 @@ export default function DashboardPage() {
             </div>
           </Card>
         </section>
+
+        <Card>
+          <SectionTitle icon={<Layers3 className="size-5" />} title="Paper Progress Overview" />
+          {paperProgress?.papers.length ? (
+            <div className="grid gap-4 lg:grid-cols-3">
+              {paperProgress.papers.map((paper) => (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4" key={paper.paper_id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[13px] font-semibold tracking-[0.16em] text-cyan-700">
+                        {paper.paper_id}
+                      </div>
+                      <div className="mt-1 text-[16px] font-semibold text-slate-950">
+                        {paper.title}
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[12px] font-semibold text-slate-500">
+                      {paper.status.replaceAll("_", " ")}
+                    </span>
+                  </div>
+                  <div className="mt-4">
+                    <div className="mb-2 flex justify-between text-[14px] font-semibold">
+                      <span className="text-slate-600">Progress</span>
+                      <span className="text-cyan-700">{paper.progress_percent}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-white">
+                      <div className="h-2 rounded-full bg-cyan-600" style={{ width: `${paper.progress_percent}%` }} />
+                    </div>
+                  </div>
+                  <div className="mt-3 text-[13px] leading-5 text-slate-500">
+                    {paper.completed_steps.length} completed, {paper.pending_steps.length} pending
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-[15px] font-medium text-slate-500">
+              No paper progress data available yet.
+            </div>
+          )}
+        </Card>
 
         <section className="grid gap-6 xl:grid-cols-3">
           <Card>

@@ -25,6 +25,7 @@ import {
   getFullPaper,
   getFullPaperMarkdownDownloadUrl,
   getGeneratedSections,
+  getPaperProgress,
   getPapers,
   getSectionStructure,
   integrateFullPaper,
@@ -33,6 +34,7 @@ import {
   type FullPaper,
   type GeneratedSection,
   type PaperWorkspace,
+  type PaperProgressItem,
   type SectionStructure,
   type SectionStructureItem,
 } from "@/src/lib/api";
@@ -165,6 +167,7 @@ function generationModeClass(section?: GeneratedSection) {
 export default function SectionWriterPage() {
   const [selectedPaper, setSelectedPaper] = useState("PAPER_1");
   const [paperOptions, setPaperOptions] = useState<PaperWorkspace[]>(fallbackPaperOptions);
+  const [paperProgress, setPaperProgress] = useState<PaperProgressItem | null>(null);
   const [structure, setStructure] = useState<SectionStructure>(fallbackStructure);
   const [generatedSections, setGeneratedSections] = useState<Record<string, GeneratedSection>>({});
   const [appliedRevisions, setAppliedRevisions] = useState<AppliedRevision[]>([]);
@@ -184,6 +187,7 @@ export default function SectionWriterPage() {
         getGeneratedSections(PROJECT_ID, paperId),
         getFullPaper(PROJECT_ID, paperId),
       ]);
+      const progressResult = await getPaperProgress(PROJECT_ID).catch(() => null);
       const appliedResult = await getAppliedRevisions(PROJECT_ID, paperId).catch(() => ({
         applied_revisions: [],
       }));
@@ -199,6 +203,7 @@ export default function SectionWriterPage() {
       setGeneratedSections(indexGeneratedSections(generated));
       setAppliedRevisions(appliedResult.applied_revisions);
       setFullPaper(integrated);
+      setPaperProgress(progressResult?.papers.find((paper) => paper.paper_id === paperId) ?? null);
       setSelectedSectionName((current) =>
         data.sections.some((section) => section.section_name === current)
           ? current
@@ -645,6 +650,33 @@ export default function SectionWriterPage() {
 
           <Card>
             <SectionTitle icon={<Lock className="size-5" />} title="Lock Version" />
+            {paperProgress ? (
+              <div className="mb-5 rounded-xl border border-cyan-100 bg-cyan-50 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-[15px] font-semibold text-slate-950">Workflow checklist</div>
+                  <span className="text-[14px] font-bold text-cyan-700">{paperProgress.progress_percent}%</span>
+                </div>
+                <div className="grid gap-2">
+                  {[
+                    ["Structure", paperProgress.structure_ready],
+                    ["Sections", paperProgress.sections_generated],
+                    ["Reviewer", paperProgress.reviewer_completed],
+                    ["Revision", paperProgress.revision_applied],
+                    ["Full paper", paperProgress.full_paper_ready],
+                    ["References", paperProgress.references_ready],
+                    ["Formatting", paperProgress.formatting_ready],
+                    ["Submission", paperProgress.submission_ready],
+                  ].map(([label, ready]) => (
+                    <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-[13px] font-semibold" key={String(label)}>
+                      <span className="text-slate-700">{label}</span>
+                      <span className={ready ? "text-emerald-700" : "text-slate-400"}>
+                        {ready ? "Ready" : "Pending"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="space-y-3">
               {[
                 ["Current version", selectedGeneratedSection?.version ?? `${selectedSection?.section_name ?? "Section"}_STRUCTURE_v1`],

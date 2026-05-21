@@ -70,6 +70,36 @@ export type PaperCreatePayload = {
   status?: string;
 };
 
+export type PaperProgressItem = {
+  paper_id: string;
+  title: string;
+  paper_type: string;
+  target_journal: string;
+  structure_ready: boolean;
+  sections_generated: boolean;
+  reviewer_completed: boolean;
+  revision_applied: boolean;
+  full_paper_ready: boolean;
+  references_ready: boolean;
+  formatting_ready: boolean;
+  submission_ready: boolean;
+  generated_sections_count: number;
+  required_sections_count: number;
+  progress_percent: number;
+  completed_steps: string[];
+  pending_steps: string[];
+  status: string;
+};
+
+export type PaperProgress = {
+  project_id: string;
+  papers: PaperProgressItem[];
+  total_papers: number;
+  active_papers: number;
+  average_progress: number;
+  status: string;
+};
+
 export type IntelligenceSummary = {
   project_id: string;
   overall_score: number;
@@ -759,6 +789,10 @@ export async function deletePaper(projectId: string, paperId: string) {
     `/papers/${projectId}/${paperId}`,
     "DELETE",
   );
+}
+
+export function getPaperProgress(projectId: string) {
+  return request<PaperProgress>(`/paper-progress/${projectId}`);
 }
 
 export function getIntelligence(projectId: string) {
