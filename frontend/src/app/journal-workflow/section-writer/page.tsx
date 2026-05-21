@@ -48,6 +48,15 @@ const fallbackStructure: SectionStructure = {
   sections: [],
 };
 
+function fallbackStructureForPaper(paperId: string): SectionStructure {
+  const option = paperOptions.find((paper) => paper.id === paperId.toUpperCase());
+  return {
+    ...fallbackStructure,
+    paper_id: paperId.toUpperCase(),
+    paper_title: option?.title ?? "Journal Paper",
+  };
+}
+
 function Card({
   children,
   className = "",
@@ -132,6 +141,23 @@ function generatedStatusClass(section?: GeneratedSection) {
   return "bg-slate-100 text-slate-600";
 }
 
+function generationModeLabel(section?: GeneratedSection) {
+  if (!section) {
+    return "Not Generated";
+  }
+  return section.ai_enabled ? "AI Assisted" : "Heuristic";
+}
+
+function generationModeClass(section?: GeneratedSection) {
+  if (section?.ai_enabled) {
+    return "bg-cyan-100 text-cyan-700";
+  }
+  if (section) {
+    return "bg-slate-100 text-slate-600";
+  }
+  return "bg-slate-50 text-slate-400";
+}
+
 export default function SectionWriterPage() {
   const [selectedPaper, setSelectedPaper] = useState("PAPER_1");
   const [structure, setStructure] = useState<SectionStructure>(fallbackStructure);
@@ -139,69 +165,82 @@ export default function SectionWriterPage() {
   const [fullPaper, setFullPaper] = useState<FullPaper | null>(null);
   const [selectedSectionName, setSelectedSectionName] = useState("Findings");
   const [isLoading, setIsLoading] = useState(true);
-  const [isBuilding, setIsBuilding] = useState(false);
+  const [isBuildingSectionStructure, setIsBuildingSectionStructure] = useState(false);
   const [isIntegrating, setIsIntegrating] = useState(false);
   const [activeSectionAction, setActiveSectionAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  async function loadSectionStructure(paperId: string) {
+    try {
+      setIsLoading(true);
+      const [structureResult, generatedResult, integratedResult] = await Promise.allSettled([
+        getSectionStructure(PROJECT_ID, paperId),
+        getGeneratedSections(PROJECT_ID, paperId),
+        getFullPaper(PROJECT_ID, paperId),
+      ]);
 
-    async function loadStructure() {
-      try {
-        setIsLoading(true);
-        const [data, generated, integrated] = await Promise.all([
-          getSectionStructure(PROJECT_ID, selectedPaper),
-          getGeneratedSections(PROJECT_ID, selectedPaper),
-          getFullPaper(PROJECT_ID, selectedPaper).catch(() => null),
-        ]);
-        if (!cancelled) {
-          setStructure(data);
-          setGeneratedSections(indexGeneratedSections(generated));
-          setFullPaper(integrated);
-          setSelectedSectionName((current) =>
-            data.sections.some((section) => section.section_name === current)
-              ? current
-              : data.sections[0]?.section_name ?? "Findings",
-          );
-          setNotice(null);
-        }
-      } catch {
-        if (!cancelled) {
-          setStructure({ ...fallbackStructure, paper_id: selectedPaper });
-          setGeneratedSections({});
-          setFullPaper(null);
-          setNotice("Section structure has not been generated yet.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
+      const data =
+        structureResult.status === "fulfilled"
+          ? structureResult.value
+          : fallbackStructureForPaper(paperId);
+      const generated = generatedResult.status === "fulfilled" ? generatedResult.value : [];
+      const integrated = integratedResult.status === "fulfilled" ? integratedResult.value : null;
+
+      setStructure(data);
+      setGeneratedSections(indexGeneratedSections(generated));
+      setFullPaper(integrated);
+      setSelectedSectionName((current) =>
+        data.sections.some((section) => section.section_name === current)
+          ? current
+          : data.sections[0]?.section_name ?? "Findings",
+      );
+      setNotice(
+        structureResult.status === "fulfilled"
+          ? null
+          : "No section structure generated yet.",
+      );
+    } catch (loadError) {
+      console.error("Load section structure failed", {
+        paperId,
+        error: loadError,
+      });
+      setStructure(fallbackStructureForPaper(paperId));
+      setGeneratedSections({});
+      setFullPaper(null);
+      setNotice("No section structure generated yet.");
+    } finally {
+      setIsLoading(false);
     }
+  }
 
-    loadStructure();
-
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadSectionStructure(selectedPaper.toUpperCase());
+    });
   }, [selectedPaper]);
 
-  async function handleBuildStructure() {
+  async function handleBuildSectionStructure() {
+    console.log("BUILD BUTTON CLICKED", selectedPaper);
+    const selectedPaperId = selectedPaper.toUpperCase();
     try {
-      setIsBuilding(true);
+      setIsBuildingSectionStructure(true);
+      setIsLoading(false);
       setNotice(null);
-      const data = await buildSectionStructure(PROJECT_ID, selectedPaper);
-      setStructure(data);
-      setSelectedSectionName(data.sections[0]?.section_name ?? "Abstract");
+      await buildSectionStructure("PROJECT_001", selectedPaperId);
+      await loadSectionStructure(selectedPaperId);
+      setNotice("Section structure built successfully.");
     } catch (buildError) {
+      console.error("Build Section Structure failed", {
+        endpoint: `POST /journal/${PROJECT_ID}/section-structure/${selectedPaperId}/build`,
+        error: buildError,
+      });
       setNotice(
         buildError instanceof Error
           ? buildError.message
           : "Unable to build section structure.",
       );
     } finally {
-      setIsBuilding(false);
+      setIsBuildingSectionStructure(false);
       setIsLoading(false);
     }
   }
@@ -291,11 +330,12 @@ export default function SectionWriterPage() {
             </div>
             <button
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-300"
-              disabled={isBuilding}
-              onClick={handleBuildStructure}
+              disabled={isBuildingSectionStructure}
+              onClick={handleBuildSectionStructure}
+              type="button"
             >
-              {isBuilding ? "Building Section Structure" : "Build Section Structure"}
-              {isBuilding ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
+              {isBuildingSectionStructure ? "Building Section Structure" : "Build Section Structure"}
+              {isBuildingSectionStructure ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
             </button>
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
@@ -315,6 +355,18 @@ export default function SectionWriterPage() {
           </div>
         </section>
 
+        {notice ? (
+          <div
+            className={`rounded-2xl border p-4 text-[15px] font-semibold ${
+              notice === "Section structure built successfully."
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}
+          >
+            {notice}
+          </div>
+        ) : null}
+
         <Card>
           <SectionTitle icon={<FileText className="size-5" />} title="Paper Selector" />
           <div className="grid gap-3 md:grid-cols-3">
@@ -326,7 +378,8 @@ export default function SectionWriterPage() {
                     : "border-slate-200 bg-slate-50 hover:border-cyan-200 hover:bg-cyan-50/50"
                 }`}
                 key={paper.id}
-                onClick={() => setSelectedPaper(paper.id)}
+                onClick={() => setSelectedPaper(paper.id.toUpperCase())}
+                type="button"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -452,6 +505,9 @@ export default function SectionWriterPage() {
                         <span className={`rounded-full px-3 py-1 text-[13px] font-semibold ${generatedStatusClass(selectedGeneratedSection)}`}>
                           {generatedStatusLabel(selectedGeneratedSection)} - {selectedGeneratedSection.version}
                         </span>
+                        <span className={`rounded-full px-3 py-1 text-[13px] font-semibold ${generationModeClass(selectedGeneratedSection)}`}>
+                          {generationModeLabel(selectedGeneratedSection)}
+                        </span>
                       </div>
                       <div className="whitespace-pre-line text-[15px] leading-7 text-slate-700">
                         {selectedGeneratedSection.generated_text}
@@ -521,6 +577,8 @@ export default function SectionWriterPage() {
                         </div>
                         <div className="grid gap-2 rounded-xl bg-white p-4 text-[14px] leading-6 text-slate-600">
                           <div>Status: {selectedGeneratedSection?.status ?? "not generated"}</div>
+                          <div>Generation: {generationModeLabel(selectedGeneratedSection)}</div>
+                          <div>AI model: {selectedGeneratedSection?.ai_model || "none"}</div>
                           <div>Version: {selectedGeneratedSection?.version ?? "none"}</div>
                           <div>Word count: {selectedGeneratedSection?.word_count ?? 0}</div>
                           <div>Generated at: {selectedGeneratedSection?.generated_at ?? "not generated"}</div>

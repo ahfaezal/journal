@@ -19,6 +19,8 @@ Example `.env`:
 
 ```env
 DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/thesis2journal
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
 ```
 
 Create a local PostgreSQL database:
@@ -85,7 +87,7 @@ The API will run at:
 - `GET /intelligence/{project_id}`
 - `GET /journal/{project_id}/planner`
 
-This foundation uses mock data only. No database or OpenAI integration is enabled yet.
+If `OPENAI_API_KEY` is configured, the Controlled Section Writing Engine can generate AI-assisted section drafts. If it is not configured, the engine automatically uses the deterministic heuristic writer.
 
 ## Tests
 

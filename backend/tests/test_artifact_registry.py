@@ -6,11 +6,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.database.database import is_database_available
 from app.services.artifact_registry_service import register_artifact
 
 pytestmark = pytest.mark.skipif(
-    not os.getenv("DATABASE_URL"),
-    reason="DATABASE_URL is not configured; skipping database-backed artifact registry tests.",
+    not os.getenv("DATABASE_URL") or not is_database_available(),
+    reason="DATABASE_URL is not configured or database is unavailable; skipping database-backed artifact registry tests.",
 )
 
 client = TestClient(app)

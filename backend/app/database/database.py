@@ -1,6 +1,7 @@
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -12,6 +13,7 @@ SessionLocal = (
     if engine is not None
     else None
 )
+_DATABASE_AVAILABLE_CACHE: bool | None = None
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -32,9 +34,22 @@ def check_database_connection() -> dict[str, str]:
             "database": "DATABASE_URL is not configured",
         }
 
-    with engine.connect() as connection:
-        connection.execute(text("SELECT 1"))
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except SQLAlchemyError as error:
+        return {
+            "status": "unavailable",
+            "database": f"connection failed: {error.__class__.__name__}",
+        }
     return {
         "status": "ok",
         "database": "connected",
     }
+
+
+def is_database_available() -> bool:
+    global _DATABASE_AVAILABLE_CACHE
+    if _DATABASE_AVAILABLE_CACHE is None:
+        _DATABASE_AVAILABLE_CACHE = check_database_connection()["status"] == "ok"
+    return _DATABASE_AVAILABLE_CACHE

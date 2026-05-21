@@ -319,6 +319,10 @@ export type GeneratedSection = {
   version: string;
   generated_at: string;
   locked_at?: string;
+  ai_model?: string;
+  ai_enabled?: boolean;
+  prompt_version?: string;
+  generation_mode?: string;
 };
 
 export type FullPaper = {
@@ -513,6 +517,25 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   }
 
   return payload as T;
+}
+
+async function readApiError(response: Response, fallback: string) {
+  try {
+    const payload = (await response.json()) as StandardApiResponse<{ detail?: string }> | { detail?: string };
+    if ("message" in payload && payload.message) {
+      return payload.message;
+    }
+    if ("detail" in payload && payload.detail) {
+      return payload.detail;
+    }
+    if ("data" in payload && payload.data?.detail) {
+      return payload.data.detail;
+    }
+  } catch {
+    return fallback;
+  }
+
+  return fallback;
 }
 
 export function getHealth() {
@@ -733,7 +756,17 @@ export async function buildSectionStructure(projectId: string, paperId: string) 
   );
 
   if (!response.ok) {
-    throw new Error(`Build section structure failed: ${response.status} ${response.statusText}`);
+    const message = await readApiError(
+      response,
+      `Build section structure failed: ${response.status} ${response.statusText}`,
+    );
+    console.error("Build section structure API request failed", {
+      projectId,
+      paperId,
+      status: response.status,
+      message,
+    });
+    throw new Error(message);
   }
 
   return parseApiResponse<SectionStructure>(response);

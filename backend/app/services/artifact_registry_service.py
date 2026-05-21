@@ -7,12 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.constants import ARTIFACT_VERSION
-from app.database.database import SessionLocal
+from app.database.database import SessionLocal, is_database_available
 from app.database.models import GeneratedArtifact, Project
 
 
 def database_enabled() -> bool:
-    return bool(settings.database_url and SessionLocal is not None)
+    return bool(settings.database_url and SessionLocal is not None and is_database_available())
 
 
 def open_session() -> Session:

@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 from typing import Any
 
+from app.core.config import settings
+from app.services.ai.openai_client import PROMPT_VERSION, generate_section_draft as generate_ai_section_draft
+
 
 def generate_section_draft(
     paper_id: str,
@@ -17,7 +20,30 @@ def generate_section_draft(
     tables_used = select_tables(section, table_map)
     audit_warnings = select_audit_warnings(section, thesis_audit)
     source_context_used = build_source_context(section, paper_extraction, objective_map)
-    generated_text = generate_heuristic_text(
+    ai_enabled = bool(settings.openai_api_key)
+    generated_text = None
+    generation_mode = "heuristic"
+
+    if ai_enabled:
+        generated_text = generate_ai_section_draft(
+            paper_id=paper_id,
+            section_name=section_name,
+            section=section,
+            section_structure=section_structure,
+            paper_extraction=paper_extraction,
+            citation_map=citation_map,
+            objective_map=objective_map,
+            table_map=table_map,
+            thesis_audit=thesis_audit,
+            citations_used=citations_used,
+            tables_used=tables_used,
+            audit_warnings=audit_warnings,
+            source_context_used=source_context_used,
+        )
+        generation_mode = "ai_assisted" if generated_text else "heuristic_fallback"
+
+    if not generated_text:
+        generated_text = generate_heuristic_text(
         paper_id=paper_id,
         section_name=section_name,
         section=section,
@@ -25,7 +51,7 @@ def generate_section_draft(
         citations_used=citations_used,
         tables_used=tables_used,
         audit_warnings=audit_warnings,
-    )
+        )
 
     return {
         "paper_id": paper_id,
@@ -40,6 +66,10 @@ def generate_section_draft(
         "status": "drafted",
         "version": "v1",
         "generated_at": datetime.now(UTC).isoformat(),
+        "ai_model": settings.openai_model if ai_enabled else "",
+        "ai_enabled": ai_enabled and generation_mode == "ai_assisted",
+        "prompt_version": PROMPT_VERSION,
+        "generation_mode": generation_mode,
     }
 
 

@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.database.database import SessionLocal
+from app.database.database import SessionLocal, is_database_available
 from app.database.models import Project, Upload
 
 router = APIRouter(prefix="/upload", tags=["upload"])
@@ -24,7 +24,7 @@ def get_project_upload_dir(project_id: str) -> Path:
 
 
 def database_enabled() -> bool:
-    return bool(settings.database_url and SessionLocal is not None)
+    return bool(settings.database_url and SessionLocal is not None and is_database_available())
 
 
 def open_session() -> Session:
