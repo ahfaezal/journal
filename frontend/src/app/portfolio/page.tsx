@@ -67,11 +67,13 @@ export default function PortfolioPage() {
       try {
         setIsLoading(true);
         const data = await getPortfolio(PROJECT_ID);
+        console.log("Loaded portfolio data", data);
         if (!cancelled) {
           setPortfolio(data);
           setNotice(null);
         }
       } catch (error) {
+        console.error("Portfolio fetch failed", error);
         if (!cancelled) {
           setNotice(error instanceof Error ? error.message : "Unable to load portfolio dashboard.");
         }

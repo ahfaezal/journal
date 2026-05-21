@@ -691,11 +691,25 @@ export type WorkflowActivity = {
 };
 
 async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      Accept: "application/json",
-    },
-  });
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), 8000);
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: {
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`API request timed out: ${API_BASE_URL}${path}`);
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`API request failed: ${response.status} ${response.statusText}`);
@@ -834,6 +848,7 @@ export function getPaperProgress(projectId: string) {
 }
 
 export function getPortfolio(projectId: string) {
+  console.log("Fetching portfolio", `${API_BASE_URL}/portfolio/${projectId}`);
   return request<PortfolioDashboard>(`/portfolio/${projectId}`);
 }
 
