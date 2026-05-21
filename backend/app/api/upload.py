@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.database.database import SessionLocal, is_database_available
 from app.database.models import Project, Upload
+from app.services.activity_logger_service import log_activity
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -190,6 +191,15 @@ async def upload_thesis_file(
             file_type=file_type,
             chapter_label=chapter_label,
         )
+
+    log_activity(
+        project_id=project_id,
+        activity_type="upload",
+        activity_title="Thesis file uploaded",
+        activity_description=f"{chapter_label} uploaded as {safe_filename}.",
+        source_module="upload",
+        status="uploaded",
+    )
 
     return {
         "project_id": project_id,

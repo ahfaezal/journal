@@ -32,6 +32,7 @@ from app.api.objective import get_objective_map_output_path, map_project_objecti
 from app.api.parser import get_parsed_output_path, parse_project_thesis
 from app.api.reviewer import get_reviewer_report_json_path, run_project_reviewer_simulation
 from app.api.table import get_table_map_output_path, map_project_tables
+from app.services.activity_logger_service import log_activity
 from app.services.artifact_registry_service import register_artifact
 from app.services.auto_regeneration_service import build_auto_regeneration_metadata, output_summary
 from app.utils.file_utils import safe_read_json, safe_write_json
@@ -183,6 +184,15 @@ def auto_regenerate_project_paper(project_id: str, paper_id: str) -> dict[str, A
         output_path = get_auto_regeneration_path(project_id, paper_id)
         metadata = safe_write_json(output_path, metadata, status="regenerated")
         register_artifact(project_id, "auto_regeneration", output_path, paper_id=paper_id, status="regenerated")
+        log_activity(
+            project_id=project_id,
+            paper_id=paper_id,
+            activity_type="auto_regeneration",
+            activity_title="Full paper regenerated",
+            activity_description=f"Regenerated full paper, references, DOCX, reviewer metadata, and submission status for {paper_id}.",
+            source_module="workflow",
+            status="regenerated",
+        )
         return {
             **metadata,
             "refreshed_outputs": {
@@ -227,6 +237,15 @@ def write_workflow_summary(project_id: str, summary: dict[str, Any]) -> None:
         "workflow_run",
         output_path,
         paper_id=PAPER_ID,
+        status=summary.get("pipeline_status", "completed"),
+    )
+    log_activity(
+        project_id=project_id,
+        paper_id=PAPER_ID,
+        activity_type="workflow_run",
+        activity_title="Full workflow pipeline completed",
+        activity_description=f"{summary.get('completed_count', 0)} workflow step(s) completed.",
+        source_module="workflow",
         status=summary.get("pipeline_status", "completed"),
     )
 

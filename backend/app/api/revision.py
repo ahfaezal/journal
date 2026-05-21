@@ -7,6 +7,7 @@ from app.api.audit import read_thesis_audit
 from app.api.journal import get_generated_section_path, read_full_paper, read_generated_sections
 from app.api.reviewer import read_reviewer_report
 from app.core.constants import GENERATED_OUTPUT_ROOT
+from app.services.activity_logger_service import log_activity
 from app.services.artifact_registry_service import register_artifact
 from app.services.apply_revision_service import apply_revision_to_section, read_applied_revisions
 from app.services.revision_engine_service import build_markdown, build_revision_report
@@ -48,6 +49,15 @@ def generate_project_revision_report(project_id: str, paper_id: str) -> dict[str
 
     register_artifact(project_id, "revision_report", json_path, paper_id=paper_id, status="generated")
     register_artifact(project_id, "revision_report", markdown_path, paper_id=paper_id, status="generated")
+    log_activity(
+        project_id=project_id,
+        paper_id=paper_id,
+        activity_type="revision_generation",
+        activity_title="Revision suggestions generated",
+        activity_description=f"{report.get('total_revisions', 0)} revision suggestion(s) generated for {paper_id}.",
+        source_module="revision",
+        status="generated",
+    )
     return report
 
 
@@ -94,6 +104,18 @@ def apply_project_revision(project_id: str, paper_id: str, revision_id: str) -> 
         paper_id=paper_id,
         section_name=revised_section.get("section_name", ""),
         status="drafted",
+    )
+    log_activity(
+        project_id=project_id,
+        paper_id=paper_id,
+        activity_type="apply_revision",
+        activity_title="Revision applied",
+        activity_description=(
+            f"Applied {revision_id} to {revised_section.get('section_name', 'section')} "
+            f"as {applied_revision.get('revised_version', 'revised version')}."
+        ),
+        source_module="revision",
+        status="applied",
     )
     return result
 

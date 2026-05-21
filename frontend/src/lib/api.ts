@@ -591,6 +591,18 @@ export type AutoRegenerationSummary = {
   status: string;
 };
 
+export type WorkflowActivity = {
+  activity_id: string;
+  project_id: string;
+  paper_id: string;
+  activity_type: string;
+  activity_title: string;
+  activity_description: string;
+  source_module: string;
+  status: string;
+  created_at: string;
+};
+
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -1066,6 +1078,25 @@ export async function autoRegeneratePaper(projectId: string, paperId: string) {
 
 export function getArtifacts(projectId: string) {
   return request<ArtifactRegistry>(`/artifacts/${projectId}`);
+}
+
+export async function getProjectActivities(projectId: string) {
+  const data = await request<{ project_id: string; activities: WorkflowActivity[]; total: number }>(
+    `/activity/${projectId}`,
+  );
+
+  return data.activities;
+}
+
+export async function getPaperActivities(projectId: string, paperId: string) {
+  const data = await request<{
+    project_id: string;
+    paper_id: string;
+    activities: WorkflowActivity[];
+    total: number;
+  }>(`/activity/${projectId}/${paperId}`);
+
+  return data.activities;
 }
 
 export async function runReviewerSimulation(projectId: string, paperId: string) {

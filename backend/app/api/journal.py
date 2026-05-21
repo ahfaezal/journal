@@ -12,6 +12,7 @@ from app.api.objective import read_objective_map
 from app.api.parser import read_parsed_thesis
 from app.api.table import read_table_map
 from app.api.upload import read_upload_metadata
+from app.services.activity_logger_service import log_activity
 from app.services.artifact_registry_service import register_artifact
 from app.services.formatting_engine_service import generate_formatted_docx
 from app.services.full_paper_service import build_full_paper, build_markdown
@@ -297,6 +298,15 @@ def generate_project_section(project_id: str, paper_id: str, section_name: str) 
         section_name=section_name,
         status="drafted",
     )
+    log_activity(
+        project_id=project_id,
+        paper_id=paper_id,
+        activity_type="section_generation",
+        activity_title=f"{section_name} section generated",
+        activity_description=f"Generated draft section for {paper_id}.",
+        source_module="section_writer",
+        status="drafted",
+    )
 
     return section
 
@@ -462,6 +472,15 @@ def generate_project_formatted_docx(project_id: str, paper_id: str) -> dict[str,
         file_format="docx",
         status="formatted",
     )
+    log_activity(
+        project_id=project_id,
+        paper_id=paper_id,
+        activity_type="docx_generation",
+        activity_title="Formatted DOCX generated",
+        activity_description=f"Generated ICC2026 formatted DOCX for {paper_id}.",
+        source_module="formatting",
+        status="formatted",
+    )
 
     return report
 
@@ -570,6 +589,16 @@ def get_project_submission_status(project_id: str, paper_id: str) -> dict[str, A
         warnings.append(f"{len(high_audit_issues)} high-severity thesis audit issue(s) remain.")
     if not has_docx:
         warnings.append("Formatted DOCX has not been generated.")
+
+    log_activity(
+        project_id=project_id,
+        paper_id=paper_id,
+        activity_type="final_submission",
+        activity_title="Submission status refreshed",
+        activity_description=f"Submission readiness is {submission_readiness_percentage}% for {paper_id}.",
+        source_module="final_submission",
+        status="ready" if submission_readiness_percentage >= 80 and has_docx else "in_progress",
+    )
 
     return {
         "paper_id": paper_id,

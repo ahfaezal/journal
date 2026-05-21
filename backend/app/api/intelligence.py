@@ -5,6 +5,7 @@ from fastapi import APIRouter
 
 from app.api.parser import parse_project_uploads, read_parsed_thesis
 from app.api.upload import get_project_upload_dir, read_upload_metadata
+from app.services.activity_logger_service import log_activity
 from app.services.artifact_registry_service import register_artifact
 from app.utils.file_utils import safe_read_json, safe_write_json
 
@@ -143,6 +144,14 @@ def build_thesis_intelligence(project_id: str) -> dict[str, object]:
     output_path = get_intelligence_output_path(project_id)
     intelligence = safe_write_json(output_path, intelligence, status="built")
     register_artifact(project_id, "intelligence", output_path, status="built")
+    log_activity(
+        project_id=project_id,
+        activity_type="intelligence_build",
+        activity_title="Thesis intelligence built",
+        activity_description=f"Overall intelligence score generated at {intelligence.get('overall_score', 0)}%.",
+        source_module="intelligence",
+        status="built",
+    )
 
     return intelligence
 

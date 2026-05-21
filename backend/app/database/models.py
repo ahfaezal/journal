@@ -42,6 +42,7 @@ class Project(Base, TimestampMixin):
     workflow_runs: Mapped[list["WorkflowRun"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     artifacts: Mapped[list["GeneratedArtifact"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     sections: Mapped[list["Section"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    activities: Mapped[list["WorkflowActivity"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 class Upload(Base, TimestampMixin):
@@ -109,3 +110,20 @@ class Section(Base, TimestampMixin):
     source_context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
     project: Mapped["Project"] = relationship(back_populates="sections")
+
+
+class WorkflowActivity(Base):
+    __tablename__ = "workflow_activities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    activity_id: Mapped[str] = mapped_column(String(36), unique=True, index=True, nullable=False, default=new_uuid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    paper_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    activity_type: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    activity_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    activity_description: Mapped[str | None] = mapped_column(Text)
+    source_module: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(64), default="completed", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    project: Mapped["Project"] = relationship(back_populates="activities")

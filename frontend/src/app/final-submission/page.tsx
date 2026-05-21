@@ -21,8 +21,10 @@ import { AppShell } from "@/src/components/layouts/AppShell";
 import {
   getFormattedDocxDownloadUrl,
   getFullPaperMarkdownDownloadUrl,
+  getPaperActivities,
   getSubmissionStatus,
   type SubmissionStatus,
+  type WorkflowActivity,
 } from "@/src/lib/api";
 
 const PROJECT_ID = "PROJECT_001";
@@ -105,6 +107,7 @@ function statusTone(status: string) {
 export default function FinalSubmissionPage() {
   const [selectedPaper, setSelectedPaper] = useState("PAPER_1");
   const [submission, setSubmission] = useState<SubmissionStatus>(fallbackSubmission);
+  const [submissionHistory, setSubmissionHistory] = useState<WorkflowActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -114,14 +117,19 @@ export default function FinalSubmissionPage() {
     async function loadSubmissionStatus() {
       try {
         setIsLoading(true);
-        const data = await getSubmissionStatus(PROJECT_ID, selectedPaper);
+        const [data, activities] = await Promise.all([
+          getSubmissionStatus(PROJECT_ID, selectedPaper),
+          getPaperActivities(PROJECT_ID, selectedPaper).catch(() => []),
+        ]);
         if (!cancelled) {
           setSubmission(data);
+          setSubmissionHistory(activities);
           setNotice(null);
         }
       } catch {
         if (!cancelled) {
           setSubmission({ ...fallbackSubmission, paper_id: selectedPaper });
+          setSubmissionHistory([]);
           setNotice("Submission status could not be loaded.");
         }
       } finally {
@@ -140,6 +148,15 @@ export default function FinalSubmissionPage() {
 
   const selectedPaperTitle =
     paperOptions.find((paper) => paper.id === selectedPaper)?.title ?? selectedPaper;
+  const submissionEvents = submissionHistory.filter((activity) =>
+    [
+      "final_submission",
+      "docx_generation",
+      "auto_regeneration",
+      "reviewer_simulation",
+      "apply_revision",
+    ].includes(activity.activity_type),
+  );
 
   const exportActions = [
     {
@@ -285,6 +302,36 @@ export default function FinalSubmissionPage() {
               </div>
             ))}
           </div>
+        </Card>
+
+        <Card>
+          <SectionTitle icon={<ScrollText className="size-5" />} title="Submission History" />
+          {submissionEvents.length ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {submissionEvents.slice(0, 8).map((activity) => (
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4" key={activity.activity_id}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-[15px] font-semibold text-slate-950">
+                        {activity.activity_title}
+                      </div>
+                      <span className="rounded-full bg-white px-2 py-0.5 text-[12px] font-semibold text-slate-500">
+                        {activity.status}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[14px] leading-6 text-slate-600">
+                      {activity.activity_description}
+                    </div>
+                    <div className="mt-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      {activity.created_at ? new Date(activity.created_at).toLocaleString() : "Just now"}
+                    </div>
+                  </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-[15px] font-medium text-slate-500">
+              No submission history has been recorded yet.
+            </div>
+          )}
         </Card>
 
         <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">

@@ -12,6 +12,7 @@ from app.api.journal import (
 )
 from app.api.objective import read_objective_map
 from app.core.constants import GENERATED_OUTPUT_ROOT
+from app.services.activity_logger_service import log_activity
 from app.services.artifact_registry_service import register_artifact
 from app.services.reviewer_simulator_service import build_markdown, build_reviewer_report
 from app.utils.file_utils import safe_read_json, safe_write_json
@@ -52,6 +53,15 @@ def run_project_reviewer_simulation(project_id: str, paper_id: str) -> dict[str,
 
     register_artifact(project_id, "reviewer_report", json_path, paper_id=paper_id, status="reviewed")
     register_artifact(project_id, "reviewer_report", markdown_path, paper_id=paper_id, status="reviewed")
+    log_activity(
+        project_id=project_id,
+        paper_id=paper_id,
+        activity_type="reviewer_simulation",
+        activity_title="Reviewer simulation completed",
+        activity_description=f"Reviewer report generated with {report.get('acceptance_probability', 0)}% acceptance probability.",
+        source_module="reviewer",
+        status="reviewed",
+    )
     return report
 
 

@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/src/components/layouts/AppShell";
-import { getProjects, type Project } from "@/src/lib/api";
+import { getProjectActivities, getProjects, type Project, type WorkflowActivity } from "@/src/lib/api";
 
 const filters = ["All", "Active", "Draft", "Submission Ready", "Archived"];
 
@@ -39,6 +39,8 @@ function Card({
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [activities, setActivities] = useState<WorkflowActivity[]>([]);
+  const [activeTab, setActiveTab] = useState<"overview" | "activity">("overview");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,8 +52,11 @@ export default function ProjectsPage() {
         setIsLoading(true);
         setError(null);
         const result = await getProjects();
+        const projectId = result[0]?.project_id || result[0]?.id || "PROJECT_001";
+        const projectActivities = await getProjectActivities(projectId).catch(() => []);
         if (!cancelled) {
           setProjects(result);
+          setActivities(projectActivities);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -221,6 +226,55 @@ export default function ProjectsPage() {
           </div>
 
           <aside className="space-y-6">
+            <Card>
+              <div className="mb-4 flex rounded-xl bg-slate-100 p-1">
+                {[
+                  ["overview", "Overview"],
+                  ["activity", "Activity"],
+                ].map(([value, label]) => (
+                  <button
+                    className={`flex-1 rounded-lg px-3 py-2 text-[14px] font-semibold transition ${
+                      activeTab === value
+                        ? "bg-white text-cyan-700 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                    key={value}
+                    onClick={() => setActiveTab(value as "overview" | "activity")}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {activeTab === "activity" ? (
+                <div className="space-y-3">
+                  {activities.slice(0, 8).map((activity) => (
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3" key={activity.activity_id}>
+                      <div className="text-[14px] font-semibold text-slate-950">
+                        {activity.activity_title}
+                      </div>
+                      <div className="mt-1 text-[13px] leading-5 text-slate-600">
+                        {activity.activity_description}
+                      </div>
+                      <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        {activity.source_module} - {activity.status}
+                      </div>
+                    </div>
+                  ))}
+                  {!activities.length ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-[14px] font-medium text-slate-500">
+                      No activity recorded yet.
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-xl bg-slate-50 p-4 text-[15px] leading-6 text-slate-600">
+                  Select Activity to review project workflow events from upload through submission.
+                </div>
+              )}
+            </Card>
+
             <Card>
               <div className="mb-4 flex items-center gap-3">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700">

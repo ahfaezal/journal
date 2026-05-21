@@ -31,6 +31,7 @@ import {
   getArtifacts,
   getIntelligence,
   getJournalPlanner,
+  getProjectActivities,
   getProject,
   getProjects,
   getWorkflowStatus,
@@ -41,6 +42,7 @@ import {
   type JournalPlanner,
   type Project,
   type ProjectDetail,
+  type WorkflowActivity,
   type WorkflowRunSummary,
 } from "@/src/lib/api";
 
@@ -182,6 +184,7 @@ type DashboardData = {
   journalPlanner: JournalPlanner | null;
   workflowRun: WorkflowRunSummary | null;
   artifacts: ArtifactRegistry | null;
+  activities: WorkflowActivity[];
 };
 
 export default function DashboardPage() {
@@ -193,6 +196,7 @@ export default function DashboardPage() {
     journalPlanner: null,
     workflowRun: null,
     artifacts: null,
+    activities: [],
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
@@ -209,12 +213,13 @@ export default function DashboardPage() {
         const [health, projectsResponse] = await Promise.all([getHealth(), getProjects()]);
         const activeProjectId = projectsResponse[0]?.project_id || projectsResponse[0]?.id;
         const fallbackProjectId = activeProjectId || "PROJECT_001";
-        const [activeProject, intelligence, journalPlanner, workflowRun, artifacts] = await Promise.all([
+        const [activeProject, intelligence, journalPlanner, workflowRun, artifacts, activities] = await Promise.all([
           activeProjectId ? getProject(activeProjectId) : Promise.resolve(null),
           getIntelligence(fallbackProjectId),
           getJournalPlanner(fallbackProjectId),
           getWorkflowStatus(fallbackProjectId).catch(() => null),
           getArtifacts(fallbackProjectId).catch(() => null),
+          getProjectActivities(fallbackProjectId).catch(() => []),
         ]);
 
         if (!cancelled) {
@@ -226,6 +231,7 @@ export default function DashboardPage() {
             journalPlanner,
             workflowRun,
             artifacts,
+            activities,
           });
         }
       } catch (loadError) {
@@ -255,7 +261,8 @@ export default function DashboardPage() {
       setIsRunningWorkflow(true);
       setError(null);
       const workflowRun = await runFullPipeline("PROJECT_001");
-      setData((current) => ({ ...current, workflowRun }));
+      const activities = await getProjectActivities("PROJECT_001").catch(() => data.activities);
+      setData((current) => ({ ...current, workflowRun, activities }));
     } catch (workflowError) {
       setError(
         workflowError instanceof Error
@@ -277,6 +284,7 @@ export default function DashboardPage() {
   const journalPlanner = data.journalPlanner;
   const workflowRun = data.workflowRun;
   const artifacts = data.artifacts;
+  const activities = data.activities;
   const latestRegeneration = artifacts?.latest_artifacts?.auto_regeneration;
   const auditIssueCount = intelligence
     ? Object.values(intelligence.audit).reduce((total, value) => total + value, 0)
@@ -800,6 +808,43 @@ export default function DashboardPage() {
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-[15px] font-medium text-slate-500">
               No workflow run found yet. Use Quick Actions to run the full workflow test.
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <SectionTitle icon={<Clock3 className="size-5" />} title="Recent Activity Timeline" />
+          {activities.length ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {activities.slice(0, 8).map((activity) => (
+                <div
+                  className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4"
+                  key={activity.activity_id}
+                >
+                  <div className="mt-1 size-2.5 shrink-0 rounded-full bg-cyan-600 shadow-[0_0_0_5px_rgba(8,145,178,0.12)]" />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-[15px] font-semibold text-slate-950">
+                        {activity.activity_title}
+                      </div>
+                      <span className="rounded-full bg-white px-2 py-0.5 text-[12px] font-semibold text-slate-500">
+                        {activity.status}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[14px] leading-6 text-slate-600">
+                      {activity.activity_description}
+                    </div>
+                    <div className="mt-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      {activity.source_module} {activity.paper_id ? `- ${activity.paper_id}` : ""} -{" "}
+                      {activity.created_at ? new Date(activity.created_at).toLocaleString() : "Just now"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-[15px] font-medium text-slate-500">
+              No workflow activity has been recorded yet.
             </div>
           )}
         </Card>
