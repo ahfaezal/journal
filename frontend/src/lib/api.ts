@@ -100,6 +100,44 @@ export type PaperProgress = {
   status: string;
 };
 
+export type PortfolioDashboard = {
+  project_id: string;
+  portfolio_summary: {
+    total_papers: number;
+    active_papers: number;
+    submission_ready: number;
+    reviewed_papers: number;
+    average_completion: number;
+    average_acceptance_probability: number;
+  };
+  paper_portfolio_cards: Array<
+    PaperProgressItem & {
+      reviewer_readiness: string;
+      submission_readiness: string;
+      revision_status: string;
+      acceptance_probability: number;
+    }
+  >;
+  readiness_distribution: Record<string, number>;
+  average_completion: number;
+  publication_pipeline_overview: Array<{
+    label: string;
+    completed: number;
+    total: number;
+    percent: number;
+  }>;
+  latest_activity: WorkflowActivity[];
+  submission_ready_highlights: Array<
+    PaperProgressItem & {
+      reviewer_readiness: string;
+      submission_readiness: string;
+      revision_status: string;
+      acceptance_probability: number;
+    }
+  >;
+  status: string;
+};
+
 export type IntelligenceSummary = {
   project_id: string;
   overall_score: number;
@@ -793,6 +831,10 @@ export async function deletePaper(projectId: string, paperId: string) {
 
 export function getPaperProgress(projectId: string) {
   return request<PaperProgress>(`/paper-progress/${projectId}`);
+}
+
+export function getPortfolio(projectId: string) {
+  return request<PortfolioDashboard>(`/portfolio/${projectId}`);
 }
 
 export function getIntelligence(projectId: string) {

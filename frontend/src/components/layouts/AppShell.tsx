@@ -41,6 +41,7 @@ const menuGroups: Array<{ title: string; items: NavItem[] }> = [
     title: "PROJECT",
     items: [
       { label: "Dashboard", href: "/dashboard", icon: <LayoutDashboard className="size-4" /> },
+      { label: "Portfolio Dashboard", href: "/portfolio", icon: <BarChart3 className="size-4" /> },
       { label: "My Projects", href: "/projects", icon: <FolderKanban className="size-4" /> },
       { label: "New Project", href: "/projects/new", icon: <PlusCircle className="size-4" /> },
       { label: "Upload Thesis", href: "/upload-thesis", icon: <UploadCloud className="size-4" /> },
