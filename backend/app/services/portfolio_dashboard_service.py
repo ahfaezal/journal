@@ -1,7 +1,10 @@
+import logging
 from typing import Any
 
-from app.services.activity_logger_service import get_activities
+from app.services.activity_logger_service import read_json_activities
 from app.services.paper_progress_service import build_project_paper_progress, read_json
+
+logger = logging.getLogger(__name__)
 
 
 def read_reviewer_probability(project_id: str, paper_id: str) -> int:
@@ -48,9 +51,13 @@ def build_pipeline_overview(papers: list[dict[str, Any]]) -> list[dict[str, Any]
 
 
 def build_project_portfolio(project_id: str) -> dict[str, Any]:
+    logger.info("portfolio start: project_id=%s", project_id)
     progress = build_project_paper_progress(project_id)
-    activities = get_activities(project_id)
     papers = progress.get("papers", [])
+    logger.info("papers loaded count: %s", len(papers))
+    logger.info("progress loaded: average=%s", progress.get("average_progress", 0))
+    activities = read_json_activities(project_id)[:8]
+    logger.info("activities loaded count: %s", len(activities))
     portfolio_cards = []
 
     for paper in papers:
@@ -75,7 +82,7 @@ def build_project_portfolio(project_id: str) -> dict[str, Any]:
         sum(int(paper["acceptance_probability"]) for paper in portfolio_cards) / len(portfolio_cards)
     ) if portfolio_cards else 0
 
-    return {
+    portfolio = {
         "project_id": project_id,
         "portfolio_summary": {
             "total_papers": progress.get("total_papers", 0),
@@ -95,3 +102,5 @@ def build_project_portfolio(project_id: str) -> dict[str, Any]:
         ],
         "status": "loaded",
     }
+    logger.info("portfolio complete: project_id=%s cards=%s", project_id, len(portfolio_cards))
+    return portfolio

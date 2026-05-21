@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.constants import GENERATED_OUTPUT_ROOT, STANDARD_SECTIONS
-from app.services.paper_workspace_service import ensure_default_papers
+from app.services.paper_workspace_service import read_json_papers
 from app.utils.file_utils import safe_read_json
 
 
@@ -82,7 +82,7 @@ def build_paper_progress(project_id: str, paper: dict[str, Any]) -> dict[str, An
 
 
 def build_project_paper_progress(project_id: str) -> dict[str, Any]:
-    papers = ensure_default_papers(project_id)
+    papers = read_json_papers(project_id)
     progress_items = [build_paper_progress(project_id, paper) for paper in papers]
     active_papers = [item for item in progress_items if item["status"] != "planned"]
     average_progress = round(

@@ -7,7 +7,21 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import settings
 
 
-engine = create_engine(settings.database_url, pool_pre_ping=True) if settings.database_url else None
+def build_connect_args(database_url: str) -> dict[str, int]:
+    if database_url.startswith("postgresql"):
+        return {"connect_timeout": 1}
+    return {}
+
+
+engine = (
+    create_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        connect_args=build_connect_args(settings.database_url),
+    )
+    if settings.database_url
+    else None
+)
 SessionLocal = (
     sessionmaker(autocommit=False, autoflush=False, bind=engine)
     if engine is not None
