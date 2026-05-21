@@ -29,6 +29,7 @@ def safe_chat_completion(
     messages: list[dict[str, str]],
     model: str | None = None,
     temperature: float = 0.2,
+    response_format: dict[str, str] | None = None,
 ) -> str | None:
     logger = get_ai_logger()
     if not settings.openai_api_key:
@@ -39,11 +40,15 @@ def safe_chat_completion(
         from openai import OpenAI
 
         client = OpenAI(api_key=settings.openai_api_key, max_retries=0, timeout=15.0)
-        response = client.chat.completions.create(
-            model=model or settings.openai_model,
-            messages=messages,
-            temperature=temperature,
-        )
+        request_kwargs: dict[str, Any] = {
+            "model": model or settings.openai_model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        if response_format:
+            request_kwargs["response_format"] = response_format
+
+        response = client.chat.completions.create(**request_kwargs)
         content = response.choices[0].message.content if response.choices else None
         if not content:
             logger.warning("OpenAI generation returned empty content.")

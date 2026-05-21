@@ -6,7 +6,7 @@ from fastapi import HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from app.api import artifacts, audit, citation, db, health, intelligence, journal, knowledge_graph, objective, parser, projects, table, upload, workflow
+from app.api import artifacts, audit, citation, db, health, intelligence, journal, knowledge_graph, objective, parser, projects, reviewer, revision, table, upload, workflow
 from app.core.config import settings
 from app.utils.file_utils import configure_file_logging
 from app.utils.response_utils import api_response, is_standard_response
@@ -103,4 +103,6 @@ app.include_router(objective.router)
 app.include_router(table.router)
 app.include_router(audit.router)
 app.include_router(knowledge_graph.router)
+app.include_router(reviewer.router)
+app.include_router(revision.router)
 app.include_router(workflow.router)

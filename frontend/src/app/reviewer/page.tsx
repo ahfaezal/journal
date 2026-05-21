@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -11,14 +12,17 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/src/components/layouts/AppShell";
+import {
+  generateRevisionReport,
+  getReviewerReport,
+  getRevisionReport,
+  runReviewerSimulation,
+  type ReviewerReport,
+  type RevisionReport,
+} from "@/src/lib/api";
 
-const summaryCards = [
-  { label: "Overall Reviewer Readiness", value: "79%", tone: "text-cyan-700" },
-  { label: "Rejection Risk", value: "18%", tone: "text-amber-700" },
-  { label: "Novelty Strength", value: "Moderate", tone: "text-violet-700" },
-  { label: "Methodology Confidence", value: "High", tone: "text-emerald-700" },
-  { label: "Citation Integrity", value: "Strong", tone: "text-emerald-700" },
-];
+const PROJECT_ID = "PROJECT_001";
+const paperOptions = ["PAPER_1", "PAPER_2", "PAPER_3"];
 
 const reviewerReports = [
   {
@@ -47,14 +51,6 @@ const reviewerReports = [
   },
 ];
 
-const riskBreakdown = [
-  { label: "Novelty weakness", value: "Medium", width: "46%" },
-  { label: "Unclear contribution", value: "Low", width: "24%" },
-  { label: "Citation mismatch", value: "Low", width: "18%" },
-  { label: "Methodology gap", value: "Low", width: "16%" },
-  { label: "Formatting issue", value: "Medium", width: "40%" },
-];
-
 const suggestions = [
   {
     priority: "High",
@@ -77,6 +73,48 @@ const suggestions = [
     section: "Formatting",
   },
 ];
+
+const fallbackReport: ReviewerReport = {
+  project_id: PROJECT_ID,
+  paper_id: "PAPER_1",
+  overall_recommendation: "Review required",
+  acceptance_probability: 79,
+  major_issues: reviewerReports.map((report) => report.major),
+  minor_issues: reviewerReports.map((report) => report.minor),
+  methodological_concerns: ["Clarify how DDR phases connect to the extraction and validation workflow."],
+  novelty_concerns: ["Novelty contribution needs to appear earlier and more explicitly."],
+  citation_concerns: ["Confirm all in-text citations appear in the final reference list."],
+  writing_quality_concerns: ["Reduce repeated contribution phrasing between Discussion and Conclusion."],
+  revision_suggestions: suggestions.map((item) => ({
+    priority: item.priority,
+    suggestion: item.revision,
+    target_section: item.section,
+  })),
+  reviewer_personas: reviewerReports.map((report) => ({
+    name: `${report.reviewer}: ${report.focus}`,
+    decision_tendency: report.decision,
+    major_comments: report.major,
+    minor_comments: report.minor,
+    recommendation: report.recommendation,
+  })),
+  ai_enabled: false,
+  ai_model: "",
+  review_mode: "heuristic",
+  review_version: "reviewer_simulator_v1",
+  generated_at: "",
+};
+
+const fallbackRevisionReport: RevisionReport = {
+  project_id: PROJECT_ID,
+  paper_id: "PAPER_1",
+  revisions: [],
+  total_revisions: 0,
+  ai_enabled: false,
+  ai_model: "",
+  revision_mode: "heuristic",
+  revision_version: "revision_engine_v1",
+  generated_at: "",
+};
 
 function Card({
   children,
@@ -115,6 +153,135 @@ function SectionTitle({
 }
 
 export default function ReviewerPage() {
+  const [selectedPaper, setSelectedPaper] = useState("PAPER_1");
+  const [report, setReport] = useState<ReviewerReport>(fallbackReport);
+  const [revisionReport, setRevisionReport] = useState<RevisionReport>(fallbackRevisionReport);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isGeneratingRevision, setIsGeneratingRevision] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function loadReviewerReport(paperId: string) {
+    try {
+      setIsLoading(true);
+      const data = await getReviewerReport(PROJECT_ID, paperId);
+      setReport(data);
+      const revision = await getRevisionReport(PROJECT_ID, paperId).catch(() => ({
+        ...fallbackRevisionReport,
+        paper_id: paperId,
+      }));
+      setRevisionReport(revision);
+      setNotice(null);
+    } catch (error) {
+      console.error("Load reviewer report failed", { paperId, error });
+      setReport({ ...fallbackReport, paper_id: paperId });
+      setRevisionReport({ ...fallbackRevisionReport, paper_id: paperId });
+      setNotice("Reviewer report has not been generated yet.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadReviewerReport(selectedPaper);
+    });
+  }, [selectedPaper]);
+
+  async function handleRunSimulation() {
+    try {
+      setIsRunning(true);
+      setNotice(null);
+      const data = await runReviewerSimulation(PROJECT_ID, selectedPaper);
+      setReport(data);
+      setNotice("Reviewer simulation completed successfully.");
+    } catch (error) {
+      console.error("Run reviewer simulation failed", { selectedPaper, error });
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Unable to run reviewer simulation.",
+      );
+    } finally {
+      setIsRunning(false);
+      setIsLoading(false);
+    }
+  }
+
+  async function handleGenerateRevisionSuggestions() {
+    try {
+      setIsGeneratingRevision(true);
+      setNotice(null);
+      const data = await generateRevisionReport(PROJECT_ID, selectedPaper);
+      setRevisionReport(data);
+      setNotice("Revision suggestions generated successfully.");
+    } catch (error) {
+      console.error("Generate revision suggestions failed", { selectedPaper, error });
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Unable to generate revision suggestions.",
+      );
+    } finally {
+      setIsGeneratingRevision(false);
+    }
+  }
+
+  const dynamicSummaryCards = [
+    {
+      label: "Overall Reviewer Readiness",
+      value: `${report.acceptance_probability}%`,
+      tone: "text-cyan-700",
+    },
+    {
+      label: "Rejection Risk",
+      value: `${Math.max(0, 100 - report.acceptance_probability)}%`,
+      tone: "text-amber-700",
+    },
+    {
+      label: "Novelty Strength",
+      value: report.novelty_concerns.length > 1 ? "Moderate" : "Strong",
+      tone: "text-violet-700",
+    },
+    {
+      label: "Methodology Confidence",
+      value: report.methodological_concerns.length > 1 ? "Review" : "High",
+      tone: "text-emerald-700",
+    },
+    {
+      label: "Citation Integrity",
+      value: report.citation_concerns.length > 1 ? "Review" : "Strong",
+      tone: "text-emerald-700",
+    },
+  ];
+  const riskBreakdownFromReport = [
+    {
+      label: "Novelty weakness",
+      value: report.novelty_concerns.length > 1 ? "Medium" : "Low",
+      width: report.novelty_concerns.length > 1 ? "46%" : "20%",
+    },
+    {
+      label: "Unclear contribution",
+      value: report.major_issues.length > 1 ? "Medium" : "Low",
+      width: report.major_issues.length > 1 ? "42%" : "24%",
+    },
+    {
+      label: "Citation mismatch",
+      value: report.citation_concerns.length > 1 ? "Medium" : "Low",
+      width: report.citation_concerns.length > 1 ? "44%" : "18%",
+    },
+    {
+      label: "Methodology gap",
+      value: report.methodological_concerns.length > 1 ? "Medium" : "Low",
+      width: report.methodological_concerns.length > 1 ? "40%" : "16%",
+    },
+    {
+      label: "Writing quality issue",
+      value: report.writing_quality_concerns.length > 1 ? "Medium" : "Low",
+      width: report.writing_quality_concerns.length > 1 ? "40%" : "18%",
+    },
+  ];
+
   return (
     <AppShell>
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
@@ -132,15 +299,60 @@ export default function ReviewerPage() {
                 Simulate academic reviewer feedback before submission.
               </p>
             </div>
-            <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300">
-              Run Simulation
+            <button
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-300"
+              disabled={isRunning}
+              onClick={handleRunSimulation}
+              type="button"
+            >
+              {isRunning ? "Running Simulation" : "Run Reviewer Simulation"}
               <ArrowRight className="size-4" />
             </button>
           </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {paperOptions.map((paper) => (
+              <button
+                className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
+                  selectedPaper === paper
+                    ? "bg-cyan-300 text-[#07162c]"
+                    : "bg-white/10 text-cyan-100 ring-1 ring-white/10 hover:bg-white/15"
+                }`}
+                key={paper}
+                onClick={() => setSelectedPaper(paper)}
+                type="button"
+              >
+                {paper}
+              </button>
+            ))}
+            <span className="rounded-full bg-white/10 px-3 py-1.5 text-[13px] font-semibold text-cyan-100 ring-1 ring-white/10">
+              {report.ai_enabled ? `AI Assisted: ${report.ai_model}` : "Heuristic Reviewer"}
+            </span>
+            <span className="rounded-full bg-white/10 px-3 py-1.5 text-[13px] font-semibold text-cyan-100 ring-1 ring-white/10">
+              {revisionReport.ai_enabled ? `Revision AI: ${revisionReport.ai_model}` : "Revision Heuristic"}
+            </span>
+            {isLoading ? (
+              <span className="rounded-full bg-white/10 px-3 py-1.5 text-[13px] font-semibold text-cyan-100 ring-1 ring-white/10">
+                Loading reviewer report
+              </span>
+            ) : null}
+          </div>
         </section>
 
+        {notice ? (
+          <div
+            className={`rounded-2xl border p-4 text-[15px] font-semibold ${
+              notice === "Reviewer simulation completed successfully."
+              || notice === "Revision suggestions generated successfully."
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}
+          >
+            {notice}
+          </div>
+        ) : null}
+
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          {summaryCards.map((card) => (
+          {dynamicSummaryCards.map((card) => (
             <Card className="p-4" key={card.label}>
               <div className={`text-3xl font-bold ${card.tone}`}>{card.value}</div>
               <div className="mt-2 text-[15px] font-semibold leading-6 text-slate-700">
@@ -151,14 +363,14 @@ export default function ReviewerPage() {
         </section>
 
         <section className="grid gap-6 xl:grid-cols-3">
-          {reviewerReports.map((report) => (
-            <Card key={report.reviewer}>
+          {report.reviewer_personas.map((persona) => (
+            <Card key={persona.name}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <div className="text-[13px] font-semibold tracking-[0.16em] text-cyan-700">
-                    {report.reviewer}
+                    Reviewer Persona
                   </div>
-                  <h2 className="mt-1 text-xl font-semibold text-slate-950">{report.focus}</h2>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-950">{persona.name}</h2>
                 </div>
                 <MessageSquareText className="size-5 text-cyan-700" />
               </div>
@@ -167,14 +379,14 @@ export default function ReviewerPage() {
                   Decision tendency
                 </div>
                 <div className="mt-1 text-[15px] font-semibold text-slate-900">
-                  {report.decision}
+                  {persona.decision_tendency}
                 </div>
               </div>
               <div className="mt-4 space-y-3">
                 {[
-                  ["Major comments", report.major],
-                  ["Minor comments", report.minor],
-                  ["Recommendation", report.recommendation],
+                  ["Major comments", persona.major_comments],
+                  ["Minor comments", persona.minor_comments],
+                  ["Recommendation", persona.recommendation],
                 ].map(([label, value]) => (
                   <div className="rounded-xl border border-slate-100 bg-slate-50 p-4" key={label}>
                     <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-slate-400">
@@ -188,11 +400,35 @@ export default function ReviewerPage() {
           ))}
         </section>
 
+        <section className="grid gap-6 xl:grid-cols-2">
+          <Card>
+            <SectionTitle icon={<AlertTriangle className="size-5" />} title="Major Issues" />
+            <div className="space-y-3">
+              {report.major_issues.map((issue) => (
+                <div className="rounded-xl border border-rose-100 bg-rose-50 p-4 text-[15px] leading-6 text-rose-900" key={issue}>
+                  {issue}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionTitle icon={<MessageSquareText className="size-5" />} title="Minor Issues" />
+            <div className="space-y-3">
+              {report.minor_issues.map((issue) => (
+                <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-[15px] leading-6 text-amber-900" key={issue}>
+                  {issue}
+                </div>
+              ))}
+            </div>
+          </Card>
+        </section>
+
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <Card>
             <SectionTitle icon={<AlertTriangle className="size-5" />} title="Rejection Risk Breakdown" />
             <div className="space-y-4">
-              {riskBreakdown.map((risk) => (
+              {riskBreakdownFromReport.map((risk) => (
                 <div key={risk.label}>
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <span className="text-[15px] font-semibold text-slate-700">{risk.label}</span>
@@ -217,10 +453,10 @@ export default function ReviewerPage() {
           <Card>
             <SectionTitle icon={<Lightbulb className="size-5" />} title="Improvement Suggestions" />
             <div className="space-y-3">
-              {suggestions.map((item) => (
+              {report.revision_suggestions.map((item) => (
                 <div
                   className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-[110px_1fr_140px]"
-                  key={`${item.priority}-${item.section}`}
+                  key={`${item.priority}-${item.target_section}-${item.suggestion}`}
                 >
                   <span
                     className={`h-fit rounded-full px-2.5 py-1 text-center text-[12px] font-semibold ${
@@ -233,8 +469,8 @@ export default function ReviewerPage() {
                   >
                     {item.priority}
                   </span>
-                  <div className="text-[15px] leading-6 text-slate-700">{item.revision}</div>
-                  <div className="text-[14px] font-semibold text-cyan-700">{item.section}</div>
+                  <div className="text-[15px] leading-6 text-slate-700">{item.suggestion}</div>
+                  <div className="text-[14px] font-semibold text-cyan-700">{item.target_section}</div>
                 </div>
               ))}
             </div>
@@ -258,6 +494,95 @@ export default function ReviewerPage() {
               Apply Reviewer Suggestions
               <ArrowRight className="size-4" />
             </button>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <SectionTitle icon={<Sparkles className="size-5" />} title="AI Revision Engine" />
+            <button
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#07162c] px-5 text-[15px] font-semibold text-white transition hover:bg-cyan-900 disabled:cursor-not-allowed disabled:bg-slate-300"
+              disabled={isGeneratingRevision}
+              onClick={handleGenerateRevisionSuggestions}
+              type="button"
+            >
+              {isGeneratingRevision ? "Generating Revisions" : "Generate Revision Suggestions"}
+              <ArrowRight className="size-4" />
+            </button>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="rounded-full bg-cyan-50 px-3 py-1.5 text-[13px] font-semibold text-cyan-700">
+              {revisionReport.ai_enabled ? `AI Assisted: ${revisionReport.ai_model}` : "Heuristic Revision"}
+            </span>
+            <span className="rounded-full bg-slate-100 px-3 py-1.5 text-[13px] font-semibold text-slate-600">
+              {revisionReport.total_revisions} revision item(s)
+            </span>
+          </div>
+          <div className="mt-5 space-y-4">
+            {revisionReport.revisions.length ? (
+              revisionReport.revisions.map((revision) => (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4" key={revision.revision_id}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[13px] font-semibold tracking-[0.16em] text-cyan-700">
+                        {revision.revision_id} - {revision.affected_section}
+                      </div>
+                      <h3 className="mt-1 text-lg font-semibold text-slate-950">
+                        {revision.linked_issue}
+                      </h3>
+                    </div>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${
+                        revision.priority === "High"
+                          ? "bg-rose-100 text-rose-700"
+                          : revision.priority === "Low"
+                            ? "bg-slate-200 text-slate-600"
+                            : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {revision.priority}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                    <div className="rounded-xl bg-white p-4">
+                      <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        Before
+                      </div>
+                      <p className="mt-2 max-h-40 overflow-auto text-[14px] leading-6 text-slate-600">
+                        {revision.before_text}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-white p-4">
+                      <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-cyan-700">
+                        After
+                      </div>
+                      <p className="mt-2 max-h-40 overflow-auto text-[14px] leading-6 text-slate-700">
+                        {revision.after_text || revision.improved_paragraph}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px]">
+                    <div className="rounded-xl bg-white p-4 text-[14px] leading-6 text-slate-600">
+                      <div className="font-semibold text-slate-950">Revision rationale</div>
+                      <p className="mt-1">{revision.revision_rationale}</p>
+                      <div className="mt-3 font-semibold text-slate-950">Comparison</div>
+                      <p className="mt-1">{revision.comparison_summary}</p>
+                    </div>
+                    <button
+                      className="inline-flex h-11 items-center justify-center gap-2 self-start rounded-xl bg-cyan-600 px-4 text-[14px] font-semibold text-white transition hover:bg-cyan-500"
+                      type="button"
+                    >
+                      Apply Revision
+                      <ArrowRight className="size-4" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-[15px] font-medium text-slate-500">
+                No revision suggestions generated yet.
+              </div>
+            )}
           </div>
         </Card>
       </div>

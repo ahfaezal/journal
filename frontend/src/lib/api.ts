@@ -465,6 +465,68 @@ export type ArtifactRegistry = {
   latest_audit: ArtifactRegistryItem | null;
 };
 
+export type ReviewerPersona = {
+  name: string;
+  decision_tendency: string;
+  major_comments: string;
+  minor_comments: string;
+  recommendation: string;
+};
+
+export type ReviewerSuggestion = {
+  priority: string;
+  suggestion: string;
+  target_section: string;
+};
+
+export type ReviewerReport = {
+  project_id: string;
+  paper_id: string;
+  overall_recommendation: string;
+  acceptance_probability: number;
+  major_issues: string[];
+  minor_issues: string[];
+  methodological_concerns: string[];
+  novelty_concerns: string[];
+  citation_concerns: string[];
+  writing_quality_concerns: string[];
+  revision_suggestions: ReviewerSuggestion[];
+  reviewer_personas: ReviewerPersona[];
+  ai_enabled: boolean;
+  ai_model: string;
+  review_mode: string;
+  review_version: string;
+  generated_at: string;
+  status?: string;
+};
+
+export type RevisionItem = {
+  revision_id: string;
+  linked_issue: string;
+  affected_section: string;
+  revision_rationale: string;
+  suggested_revision: string;
+  improved_paragraph: string;
+  before_text: string;
+  after_text: string;
+  comparison_summary: string;
+  priority: string;
+  apply_status: string;
+};
+
+export type RevisionReport = {
+  project_id: string;
+  paper_id: string;
+  revisions: RevisionItem[];
+  total_revisions: number;
+  ai_enabled: boolean;
+  ai_model: string;
+  revision_mode: string;
+  revision_version: string;
+  generated_at: string;
+  status?: string;
+};
+
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -925,6 +987,44 @@ export function getWorkflowStatus(projectId: string) {
 
 export function getArtifacts(projectId: string) {
   return request<ArtifactRegistry>(`/artifacts/${projectId}`);
+}
+
+export async function runReviewerSimulation(projectId: string, paperId: string) {
+  const response = await fetch(`${API_BASE_URL}/reviewer/${projectId}/${paperId}/run`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Run reviewer simulation failed: ${response.status} ${response.statusText}`);
+  }
+
+  return parseApiResponse<ReviewerReport>(response);
+}
+
+export function getReviewerReport(projectId: string, paperId: string) {
+  return request<ReviewerReport>(`/reviewer/${projectId}/${paperId}`);
+}
+
+export async function generateRevisionReport(projectId: string, paperId: string) {
+  const response = await fetch(`${API_BASE_URL}/revision/${projectId}/${paperId}/generate`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Generate revision report failed: ${response.status} ${response.statusText}`);
+  }
+
+  return parseApiResponse<RevisionReport>(response);
+}
+
+export function getRevisionReport(projectId: string, paperId: string) {
+  return request<RevisionReport>(`/revision/${projectId}/${paperId}`);
 }
 
 export async function uploadThesisFile(
