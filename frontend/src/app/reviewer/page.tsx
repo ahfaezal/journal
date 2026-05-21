@@ -14,6 +14,7 @@ import {
 import { AppShell } from "@/src/components/layouts/AppShell";
 import {
   applyRevision,
+  autoRegeneratePaper,
   generateRevisionReport,
   getAppliedRevisions,
   getReviewerReport,
@@ -162,6 +163,7 @@ export default function ReviewerPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [isGeneratingRevision, setIsGeneratingRevision] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [activeApplyRevision, setActiveApplyRevision] = useState<string | null>(null);
   const [appliedRevisions, setAppliedRevisions] = useState<AppliedRevision[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -262,6 +264,24 @@ export default function ReviewerPage() {
       );
     } finally {
       setActiveApplyRevision(null);
+    }
+  }
+
+  async function handleAutoRegenerate() {
+    try {
+      setIsRegenerating(true);
+      setNotice(null);
+      const result = await autoRegeneratePaper(PROJECT_ID, selectedPaper);
+      const refreshedReport = await getReviewerReport(PROJECT_ID, selectedPaper).catch(() => report);
+      setReport(refreshedReport);
+      setNotice(`Full paper regenerated from ${result.triggered_by_revision}.`);
+    } catch (error) {
+      console.error("Auto regeneration failed", { selectedPaper, error });
+      setNotice(
+        error instanceof Error ? error.message : "Unable to regenerate full paper.",
+      );
+    } finally {
+      setIsRegenerating(false);
     }
   }
 
@@ -386,6 +406,7 @@ export default function ReviewerPage() {
               notice === "Reviewer simulation completed successfully."
               || notice === "Revision suggestions generated successfully."
               || notice.startsWith("Revision ")
+              || notice.startsWith("Full paper regenerated")
                 ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                 : "border-amber-200 bg-amber-50 text-amber-800"
             }`}
@@ -533,10 +554,27 @@ export default function ReviewerPage() {
                 before final formatting and submission.
               </p>
             </div>
-            <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] transition hover:bg-cyan-300">
-              {appliedRevisions.length ? "Re-run Reviewer Simulation" : "Apply Reviewer Suggestions"}
-              <ArrowRight className="size-4" />
-            </button>
+            <div className="flex flex-wrap gap-3">
+              {appliedRevisions.length ? (
+                <button
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-5 text-[15px] font-semibold text-[#07162c] transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  disabled={isRegenerating}
+                  onClick={handleAutoRegenerate}
+                  type="button"
+                >
+                  {isRegenerating ? "Regenerating Full Paper" : "Regenerate Full Paper"}
+                  <ArrowRight className="size-4" />
+                </button>
+              ) : null}
+              <button
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] transition hover:bg-cyan-300"
+                onClick={handleRunSimulation}
+                type="button"
+              >
+                {appliedRevisions.length ? "Re-run Reviewer Simulation" : "Apply Reviewer Suggestions"}
+                <ArrowRight className="size-4" />
+              </button>
+            </div>
           </div>
         </Card>
 

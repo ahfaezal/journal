@@ -414,6 +414,12 @@ export type SubmissionStatus = {
   };
   missing_items: string[];
   warnings: string[];
+  regeneration_status?: {
+    state: string;
+    last_regenerated_at: string;
+    last_revision_timestamp: string;
+    triggered_by_revision: string;
+  };
   status: string;
 };
 
@@ -557,6 +563,31 @@ export type AppliedRevisionsList = {
   paper_id: string;
   applied_revisions: AppliedRevision[];
   total_applied: number;
+  status: string;
+};
+
+export type AutoRegenerationSummary = {
+  project_id: string;
+  paper_id: string;
+  regenerated_at: string;
+  triggered_by_revision: string;
+  updated_outputs: Array<{
+    label: string;
+    path: string;
+    exists: boolean;
+    size: number;
+  }>;
+  reviewer_readiness_metadata: {
+    overall_recommendation: string;
+    acceptance_probability: number;
+    ai_enabled: boolean;
+    review_mode: string;
+  };
+  submission_metadata: {
+    readiness_percentage: number;
+    status: string;
+  };
+  regeneration_version: string;
   status: string;
 };
 
@@ -1016,6 +1047,21 @@ export async function runFullPipeline(projectId: string) {
 
 export function getWorkflowStatus(projectId: string) {
   return request<WorkflowRunSummary>(`/workflow/${projectId}/status`);
+}
+
+export async function autoRegeneratePaper(projectId: string, paperId: string) {
+  const response = await fetch(`${API_BASE_URL}/workflow/${projectId}/${paperId}/auto-regenerate`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Auto regeneration failed: ${response.status} ${response.statusText}`);
+  }
+
+  return parseApiResponse<AutoRegenerationSummary>(response);
 }
 
 export function getArtifacts(projectId: string) {

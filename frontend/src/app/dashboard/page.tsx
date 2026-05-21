@@ -277,6 +277,7 @@ export default function DashboardPage() {
   const journalPlanner = data.journalPlanner;
   const workflowRun = data.workflowRun;
   const artifacts = data.artifacts;
+  const latestRegeneration = artifacts?.latest_artifacts?.auto_regeneration;
   const auditIssueCount = intelligence
     ? Object.values(intelligence.audit).reduce((total, value) => total + value, 0)
     : 8;
@@ -337,6 +338,9 @@ export default function DashboardPage() {
     journalPlanner
       ? `${journalPlanner.suggested_papers.length} paper plans loaded from backend.`
       : "Paper 2 is ready for reviewer simulation.",
+    latestRegeneration
+      ? `Latest auto regeneration: ${latestRegeneration.updated_at}.`
+      : "No auto regeneration activity yet.",
     error ? "Backend data unavailable; showing fallback dashboard values." : "ICC2026 template rules loaded successfully.",
   ];
 
@@ -847,6 +851,7 @@ export default function DashboardPage() {
                   ["Formatted DOCX", artifacts?.latest_docx?.updated_at || "Not generated"],
                   ["Markdown", artifacts?.latest_markdown?.updated_at || "Not generated"],
                   ["Audit", artifacts?.latest_audit?.updated_at || "Not generated"],
+                  ["Auto regeneration", latestRegeneration?.updated_at || "Not generated"],
                 ].map(([label, value]) => (
                   <div className="flex items-center justify-between rounded-xl bg-white p-3" key={label}>
                     <span className="text-[14px] font-semibold text-slate-700">{label}</span>

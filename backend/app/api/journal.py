@@ -186,6 +186,33 @@ def read_formatting_report(project_id: str, paper_id: str) -> dict[str, Any] | N
     return safe_read_json(output_path)
 
 
+def get_auto_regeneration_metadata_path(project_id: str, paper_id: str) -> Path:
+    output_dir = GENERATED_OUTPUT_ROOT / project_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir / f"auto_regeneration_{paper_id}.json"
+
+
+def read_auto_regeneration_metadata(project_id: str, paper_id: str) -> dict[str, Any] | None:
+    output_path = get_auto_regeneration_metadata_path(project_id, paper_id)
+    if not output_path.exists():
+        return None
+
+    return safe_read_json(output_path)
+
+
+def latest_applied_revision_timestamp(project_id: str, paper_id: str) -> str:
+    revision_dir = GENERATED_OUTPUT_ROOT / project_id / "revisions" / paper_id
+    if not revision_dir.exists():
+        return ""
+
+    timestamps = []
+    for path in revision_dir.glob("*_applied.json"):
+        payload = safe_read_json(path)
+        if payload and payload.get("revision_timestamp"):
+            timestamps.append(str(payload["revision_timestamp"]))
+    return max(timestamps) if timestamps else ""
+
+
 @router.get("/{project_id}/planner")
 def get_journal_plan(project_id: str) -> dict[str, Any]:
     journal_plan = read_journal_plan(project_id)
@@ -492,6 +519,14 @@ def get_project_submission_status(project_id: str, paper_id: str) -> dict[str, A
     thesis_audit = read_thesis_audit(project_id)
     docx_path = get_formatted_docx_path(project_id, paper_id)
     markdown_path = get_full_paper_markdown_path(project_id, paper_id)
+    regeneration = read_auto_regeneration_metadata(project_id, paper_id)
+    last_revision_timestamp = latest_applied_revision_timestamp(project_id, paper_id)
+    last_regenerated_at = str((regeneration or {}).get("regenerated_at", ""))
+    regeneration_state = "fresh"
+    if last_revision_timestamp and (not last_regenerated_at or last_revision_timestamp > last_regenerated_at):
+        regeneration_state = "stale"
+    elif not last_regenerated_at:
+        regeneration_state = "not_generated"
 
     has_full_paper = full_paper is not None
     has_markdown = markdown_path.exists()
@@ -560,6 +595,12 @@ def get_project_submission_status(project_id: str, paper_id: str) -> dict[str, A
         },
         "missing_items": missing_items,
         "warnings": warnings,
+        "regeneration_status": {
+            "state": regeneration_state,
+            "last_regenerated_at": last_regenerated_at,
+            "last_revision_timestamp": last_revision_timestamp,
+            "triggered_by_revision": str((regeneration or {}).get("triggered_by_revision", "")),
+        },
         "status": "ready" if submission_readiness_percentage >= 80 and has_docx else "in_progress",
     }
 

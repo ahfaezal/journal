@@ -30,8 +30,10 @@ from app.api.journal import (
 from app.api.knowledge_graph import get_knowledge_graph_output_path, build_project_knowledge_graph
 from app.api.objective import get_objective_map_output_path, map_project_objectives
 from app.api.parser import get_parsed_output_path, parse_project_thesis
+from app.api.reviewer import get_reviewer_report_json_path, run_project_reviewer_simulation
 from app.api.table import get_table_map_output_path, map_project_tables
 from app.services.artifact_registry_service import register_artifact
+from app.services.auto_regeneration_service import build_auto_regeneration_metadata, output_summary
 from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
@@ -60,6 +62,20 @@ def get_workflow_run_path(project_id: str) -> Path:
 
 def read_workflow_run(project_id: str) -> dict[str, Any] | None:
     output_path = get_workflow_run_path(project_id)
+    if not output_path.exists():
+        return None
+
+    return safe_read_json(output_path)
+
+
+def get_auto_regeneration_path(project_id: str, paper_id: str) -> Path:
+    output_dir = GENERATED_OUTPUT_ROOT / project_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir / f"auto_regeneration_{paper_id}.json"
+
+
+def read_auto_regeneration(project_id: str, paper_id: str) -> dict[str, Any] | None:
+    output_path = get_auto_regeneration_path(project_id, paper_id)
     if not output_path.exists():
         return None
 
@@ -135,6 +151,49 @@ def get_workflow_status(project_id: str) -> dict[str, Any]:
         )
 
     return workflow_run
+
+
+@router.post("/{project_id}/{paper_id}/auto-regenerate")
+def auto_regenerate_project_paper(project_id: str, paper_id: str) -> dict[str, Any]:
+    paper_id = paper_id.upper()
+    try:
+        full_paper = integrate_project_full_paper(project_id, paper_id)
+        reference_bank = build_project_references(project_id, paper_id)
+        formatting_report = generate_project_formatted_docx(project_id, paper_id)
+        reviewer_report = run_project_reviewer_simulation(project_id, paper_id)
+        submission_status = get_project_submission_status(project_id, paper_id)
+
+        updated_outputs = [
+            output_summary("Full Paper JSON", get_full_paper_json_path(project_id, paper_id)),
+            output_summary("Full Paper Markdown", get_full_paper_markdown_path(project_id, paper_id)),
+            output_summary("Reference Bank", get_reference_bank_json_path(project_id, paper_id)),
+            output_summary("Formatting Report", get_formatting_report_path(project_id, paper_id)),
+            output_summary("Formatted DOCX", get_formatted_docx_path(project_id, paper_id)),
+            output_summary("Reviewer Report", get_reviewer_report_json_path(project_id, paper_id)),
+        ]
+        triggered_by_revision = latest_revision_trigger(project_id, paper_id)
+        metadata = build_auto_regeneration_metadata(
+            project_id=project_id,
+            paper_id=paper_id,
+            triggered_by_revision=triggered_by_revision,
+            updated_outputs=updated_outputs,
+            reviewer_report=reviewer_report,
+            submission_status=submission_status,
+        )
+        output_path = get_auto_regeneration_path(project_id, paper_id)
+        metadata = safe_write_json(output_path, metadata, status="regenerated")
+        register_artifact(project_id, "auto_regeneration", output_path, paper_id=paper_id, status="regenerated")
+        return {
+            **metadata,
+            "refreshed_outputs": {
+                "full_paper_status": full_paper.get("status", "integrated"),
+                "reference_status": reference_bank.get("status", "built"),
+                "formatting_status": formatting_report.get("status", "formatted"),
+                "submission_status": submission_status.get("status", "in_progress"),
+            },
+        }
+    except Exception as error:  # noqa: BLE001 - return pipeline failure metadata
+        raise HTTPException(status_code=500, detail=f"Auto regeneration failed: {error}") from error
 
 
 def infer_failed_step(completed_steps: list[dict[str, str]]) -> str:
@@ -227,3 +286,20 @@ def generated_files_summary(project_id: str) -> list[dict[str, Any]]:
         }
         for label, path in file_paths
     ]
+
+
+def latest_revision_trigger(project_id: str, paper_id: str) -> str:
+    revision_dir = GENERATED_OUTPUT_ROOT / project_id / "revisions" / paper_id
+    if not revision_dir.exists():
+        return "manual"
+
+    applied_files = sorted(
+        revision_dir.glob("*_applied.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not applied_files:
+        return "manual"
+
+    latest = safe_read_json(applied_files[0])
+    return str((latest or {}).get("revision_id", "manual"))

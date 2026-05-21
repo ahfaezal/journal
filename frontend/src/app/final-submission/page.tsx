@@ -47,6 +47,12 @@ const fallbackSubmission: SubmissionStatus = {
   export_urls: { docx: "", markdown: "" },
   missing_items: [],
   warnings: ["Submission status has not been loaded."],
+  regeneration_status: {
+    state: "not_generated",
+    last_regenerated_at: "",
+    last_revision_timestamp: "",
+    triggered_by_revision: "",
+  },
   status: "in_progress",
 };
 
@@ -209,6 +215,17 @@ export default function FinalSubmissionPage() {
                 {notice}
               </span>
             ) : null}
+            <span
+              className={`rounded-full px-3 py-1 text-[13px] font-semibold ring-1 ${
+                submission.regeneration_status?.state === "fresh"
+                  ? "bg-emerald-300/15 text-emerald-100 ring-emerald-200/20"
+                  : submission.regeneration_status?.state === "stale"
+                    ? "bg-rose-300/15 text-rose-100 ring-rose-200/20"
+                    : "bg-white/10 text-cyan-100 ring-white/10"
+              }`}
+            >
+              Regeneration: {submission.regeneration_status?.state ?? "not_generated"}
+            </span>
           </div>
         </section>
 
@@ -251,6 +268,24 @@ export default function FinalSubmissionPage() {
             </Card>
           ))}
         </section>
+
+        <Card>
+          <SectionTitle icon={<ShieldCheck className="size-5" />} title="Regeneration Status" />
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              ["State", submission.regeneration_status?.state ?? "not_generated"],
+              ["Last regenerated", submission.regeneration_status?.last_regenerated_at || "Not regenerated"],
+              ["Triggered by", submission.regeneration_status?.triggered_by_revision || "No applied revision"],
+            ].map(([label, value]) => (
+              <div className="rounded-xl bg-slate-50 p-4" key={label}>
+                <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  {label}
+                </div>
+                <div className="mt-2 break-words text-[15px] font-semibold text-slate-900">{value}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
 
         <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <Card>
