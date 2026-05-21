@@ -14,7 +14,15 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/src/components/layouts/AppShell";
-import { getProjectActivities, getProjects, type Project, type WorkflowActivity } from "@/src/lib/api";
+import {
+  createPaper,
+  getPapers,
+  getProjectActivities,
+  getProjects,
+  type PaperWorkspace,
+  type Project,
+  type WorkflowActivity,
+} from "@/src/lib/api";
 
 const filters = ["All", "Active", "Draft", "Submission Ready", "Archived"];
 
@@ -39,8 +47,10 @@ function Card({
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [papers, setPapers] = useState<PaperWorkspace[]>([]);
   const [activities, setActivities] = useState<WorkflowActivity[]>([]);
-  const [activeTab, setActiveTab] = useState<"overview" | "activity">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "papers" | "activity">("overview");
+  const [isCreatingPaper, setIsCreatingPaper] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,10 +63,14 @@ export default function ProjectsPage() {
         setError(null);
         const result = await getProjects();
         const projectId = result[0]?.project_id || result[0]?.id || "PROJECT_001";
-        const projectActivities = await getProjectActivities(projectId).catch(() => []);
+        const [projectActivities, projectPapers] = await Promise.all([
+          getProjectActivities(projectId).catch(() => []),
+          getPapers(projectId).catch(() => []),
+        ]);
         if (!cancelled) {
           setProjects(result);
           setActivities(projectActivities);
+          setPapers(projectPapers);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -74,6 +88,23 @@ export default function ProjectsPage() {
       cancelled = true;
     };
   }, []);
+
+  async function handleCreatePaper() {
+    try {
+      setIsCreatingPaper(true);
+      const projectId = projects[0]?.project_id || projects[0]?.id || "PROJECT_001";
+      const paper = await createPaper(projectId, {
+        title: `New Journal Paper ${papers.length + 1}`,
+        paper_type: "Journal Paper",
+        target_journal: "ICC2026",
+        status: "draft",
+      });
+      setPapers((current) => [...current, paper]);
+      setActiveTab("papers");
+    } finally {
+      setIsCreatingPaper(false);
+    }
+  }
 
   const summary = useMemo(
     () => [
@@ -230,6 +261,7 @@ export default function ProjectsPage() {
               <div className="mb-4 flex rounded-xl bg-slate-100 p-1">
                 {[
                   ["overview", "Overview"],
+                  ["papers", "Papers"],
                   ["activity", "Activity"],
                 ].map(([value, label]) => (
                   <button
@@ -239,7 +271,7 @@ export default function ProjectsPage() {
                         : "text-slate-500 hover:text-slate-700"
                     }`}
                     key={value}
-                    onClick={() => setActiveTab(value as "overview" | "activity")}
+                    onClick={() => setActiveTab(value as "overview" | "papers" | "activity")}
                     type="button"
                   >
                     {label}
@@ -247,7 +279,40 @@ export default function ProjectsPage() {
                 ))}
               </div>
 
-              {activeTab === "activity" ? (
+              {activeTab === "papers" ? (
+                <div className="space-y-3">
+                  <button
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#07162c] px-4 text-[14px] font-semibold text-white transition hover:bg-cyan-900 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    disabled={isCreatingPaper}
+                    onClick={handleCreatePaper}
+                    type="button"
+                  >
+                    {isCreatingPaper ? "Creating Paper" : "Create Paper"}
+                    <PlusCircle className="size-4" />
+                  </button>
+                  {papers.map((paper) => (
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3" key={paper.paper_id}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[13px] font-semibold tracking-[0.14em] text-cyan-700">
+                          {paper.paper_id}
+                        </div>
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[12px] font-semibold text-slate-500">
+                          {paper.status}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[14px] font-semibold text-slate-950">{paper.title}</div>
+                      <div className="mt-1 text-[13px] leading-5 text-slate-600">
+                        {paper.paper_type} - {paper.target_journal}
+                      </div>
+                    </div>
+                  ))}
+                  {!papers.length ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-[14px] font-medium text-slate-500">
+                      No papers created yet.
+                    </div>
+                  ) : null}
+                </div>
+              ) : activeTab === "activity" ? (
                 <div className="space-y-3">
                   {activities.slice(0, 8).map((activity) => (
                     <div className="rounded-xl border border-slate-100 bg-slate-50 p-3" key={activity.activity_id}>

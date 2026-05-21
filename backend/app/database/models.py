@@ -43,6 +43,7 @@ class Project(Base, TimestampMixin):
     artifacts: Mapped[list["GeneratedArtifact"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     sections: Mapped[list["Section"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     activities: Mapped[list["WorkflowActivity"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    papers: Mapped[list["Paper"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 class Upload(Base, TimestampMixin):
@@ -127,3 +128,18 @@ class WorkflowActivity(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     project: Mapped["Project"] = relationship(back_populates="activities")
+
+
+class Paper(Base, TimestampMixin):
+    __tablename__ = "papers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    paper_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    paper_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_journal: Mapped[str | None] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(64), default="planned", nullable=False)
+    version: Mapped[str] = mapped_column(String(32), default="v1", nullable=False)
+
+    project: Mapped["Project"] = relationship(back_populates="papers")

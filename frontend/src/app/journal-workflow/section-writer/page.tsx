@@ -25,21 +25,23 @@ import {
   getFullPaper,
   getFullPaperMarkdownDownloadUrl,
   getGeneratedSections,
+  getPapers,
   getSectionStructure,
   integrateFullPaper,
   lockSection,
   type AppliedRevision,
   type FullPaper,
   type GeneratedSection,
+  type PaperWorkspace,
   type SectionStructure,
   type SectionStructureItem,
 } from "@/src/lib/api";
 
 const PROJECT_ID = "PROJECT_001";
-const paperOptions = [
-  { id: "PAPER_1", title: "Need Analysis Paper" },
-  { id: "PAPER_2", title: "Development & Validation Paper" },
-  { id: "PAPER_3", title: "Framework / Model Paper" },
+const fallbackPaperOptions: PaperWorkspace[] = [
+  { paper_id: "PAPER_1", project_id: PROJECT_ID, title: "Need Analysis Paper", paper_type: "Need Analysis", target_journal: "ICC2026", status: "planned", version: "v1", created_at: "", updated_at: "" },
+  { paper_id: "PAPER_2", project_id: PROJECT_ID, title: "Development Paper", paper_type: "Development", target_journal: "ICC2026", status: "planned", version: "v1", created_at: "", updated_at: "" },
+  { paper_id: "PAPER_3", project_id: PROJECT_ID, title: "Validation Paper", paper_type: "Validation", target_journal: "ICC2026", status: "planned", version: "v1", created_at: "", updated_at: "" },
 ];
 
 const fallbackStructure: SectionStructure = {
@@ -51,7 +53,7 @@ const fallbackStructure: SectionStructure = {
 };
 
 function fallbackStructureForPaper(paperId: string): SectionStructure {
-  const option = paperOptions.find((paper) => paper.id === paperId.toUpperCase());
+  const option = fallbackPaperOptions.find((paper) => paper.paper_id === paperId.toUpperCase());
   return {
     ...fallbackStructure,
     paper_id: paperId.toUpperCase(),
@@ -162,6 +164,7 @@ function generationModeClass(section?: GeneratedSection) {
 
 export default function SectionWriterPage() {
   const [selectedPaper, setSelectedPaper] = useState("PAPER_1");
+  const [paperOptions, setPaperOptions] = useState<PaperWorkspace[]>(fallbackPaperOptions);
   const [structure, setStructure] = useState<SectionStructure>(fallbackStructure);
   const [generatedSections, setGeneratedSections] = useState<Record<string, GeneratedSection>>({});
   const [appliedRevisions, setAppliedRevisions] = useState<AppliedRevision[]>([]);
@@ -226,6 +229,22 @@ export default function SectionWriterPage() {
       void loadSectionStructure(selectedPaper.toUpperCase());
     });
   }, [selectedPaper]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPapers() {
+      const papers = await getPapers(PROJECT_ID).catch(() => fallbackPaperOptions);
+      if (!cancelled) {
+        setPaperOptions(papers.length ? papers : fallbackPaperOptions);
+      }
+    }
+
+    loadPapers();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleBuildSectionStructure() {
     console.log("BUILD BUTTON CLICKED", selectedPaper);
@@ -387,24 +406,24 @@ export default function SectionWriterPage() {
             {paperOptions.map((paper) => (
               <button
                 className={`rounded-2xl border p-4 text-left transition ${
-                  selectedPaper === paper.id
+                  selectedPaper === paper.paper_id
                     ? "border-cyan-200 bg-cyan-50 ring-1 ring-cyan-100"
                     : "border-slate-200 bg-slate-50 hover:border-cyan-200 hover:bg-cyan-50/50"
                 }`}
-                key={paper.id}
-                onClick={() => setSelectedPaper(paper.id.toUpperCase())}
+                key={paper.paper_id}
+                onClick={() => setSelectedPaper(paper.paper_id.toUpperCase())}
                 type="button"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[13px] font-semibold tracking-[0.16em] text-cyan-700">
-                      {paper.id}
+                      {paper.paper_id}
                     </div>
                     <div className="mt-1 text-lg font-semibold text-slate-950">
-                      {selectedPaper === paper.id ? structure.paper_title : paper.title}
+                      {selectedPaper === paper.paper_id ? structure.paper_title : paper.title}
                     </div>
                   </div>
-                  {selectedPaper === paper.id ? <CheckCircle2 className="size-5 text-cyan-700" /> : null}
+                  {selectedPaper === paper.paper_id ? <CheckCircle2 className="size-5 text-cyan-700" /> : null}
                 </div>
               </button>
             ))}

@@ -18,6 +18,7 @@ from app.services.formatting_engine_service import generate_formatted_docx
 from app.services.full_paper_service import build_full_paper, build_markdown
 from app.services.journal_planner_service import build_journal_plan
 from app.services.paper_extraction_service import build_paper_extraction
+from app.services.paper_workspace_service import upsert_papers_from_plan
 from app.services.reference_builder_service import build_reference_bank, build_reference_markdown
 from app.services.section_structure_service import build_section_structure
 from app.services.section_writer_service import generate_section_draft, lock_section
@@ -229,6 +230,10 @@ def build_project_journal_plan(project_id: str) -> dict[str, Any]:
     output_path = get_journal_plan_output_path(project_id)
     journal_plan = safe_write_json(output_path, journal_plan, status="planned")
     register_artifact(project_id, "journal_planner", output_path, status="planned")
+    journal_plan["papers"] = upsert_papers_from_plan(
+        project_id,
+        journal_plan.get("suggested_papers", []) if isinstance(journal_plan.get("suggested_papers"), list) else [],
+    )
 
     return journal_plan
 

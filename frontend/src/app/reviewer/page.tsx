@@ -17,16 +17,22 @@ import {
   autoRegeneratePaper,
   generateRevisionReport,
   getAppliedRevisions,
+  getPapers,
   getReviewerReport,
   getRevisionReport,
   runReviewerSimulation,
   type AppliedRevision,
+  type PaperWorkspace,
   type ReviewerReport,
   type RevisionReport,
 } from "@/src/lib/api";
 
 const PROJECT_ID = "PROJECT_001";
-const paperOptions = ["PAPER_1", "PAPER_2", "PAPER_3"];
+const fallbackPaperOptions: PaperWorkspace[] = [
+  { paper_id: "PAPER_1", project_id: PROJECT_ID, title: "Need Analysis Paper", paper_type: "Need Analysis", target_journal: "ICC2026", status: "planned", version: "v1", created_at: "", updated_at: "" },
+  { paper_id: "PAPER_2", project_id: PROJECT_ID, title: "Development Paper", paper_type: "Development", target_journal: "ICC2026", status: "planned", version: "v1", created_at: "", updated_at: "" },
+  { paper_id: "PAPER_3", project_id: PROJECT_ID, title: "Validation Paper", paper_type: "Validation", target_journal: "ICC2026", status: "planned", version: "v1", created_at: "", updated_at: "" },
+];
 
 const reviewerReports = [
   {
@@ -158,6 +164,7 @@ function SectionTitle({
 
 export default function ReviewerPage() {
   const [selectedPaper, setSelectedPaper] = useState("PAPER_1");
+  const [paperOptions, setPaperOptions] = useState<PaperWorkspace[]>(fallbackPaperOptions);
   const [report, setReport] = useState<ReviewerReport>(fallbackReport);
   const [revisionReport, setRevisionReport] = useState<RevisionReport>(fallbackRevisionReport);
   const [isLoading, setIsLoading] = useState(true);
@@ -199,6 +206,20 @@ export default function ReviewerPage() {
       void loadReviewerReport(selectedPaper);
     });
   }, [selectedPaper]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPapers() {
+      const papers = await getPapers(PROJECT_ID).catch(() => fallbackPaperOptions);
+      if (!cancelled) {
+        setPaperOptions(papers.length ? papers : fallbackPaperOptions);
+      }
+    }
+    loadPapers();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleRunSimulation() {
     try {
@@ -375,15 +396,15 @@ export default function ReviewerPage() {
             {paperOptions.map((paper) => (
               <button
                 className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
-                  selectedPaper === paper
+                  selectedPaper === paper.paper_id
                     ? "bg-cyan-300 text-[#07162c]"
                     : "bg-white/10 text-cyan-100 ring-1 ring-white/10 hover:bg-white/15"
                 }`}
-                key={paper}
-                onClick={() => setSelectedPaper(paper)}
+                key={paper.paper_id}
+                onClick={() => setSelectedPaper(paper.paper_id)}
                 type="button"
               >
-                {paper}
+                {paper.paper_id}
               </button>
             ))}
             <span className="rounded-full bg-white/10 px-3 py-1.5 text-[13px] font-semibold text-cyan-100 ring-1 ring-white/10">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -31,6 +31,7 @@ import {
   getArtifacts,
   getIntelligence,
   getJournalPlanner,
+  getPapers,
   getProjectActivities,
   getProject,
   getProjects,
@@ -40,6 +41,7 @@ import {
   type HealthResponse,
   type IntelligenceSummary,
   type JournalPlanner,
+  type PaperWorkspace,
   type Project,
   type ProjectDetail,
   type WorkflowActivity,
@@ -185,6 +187,7 @@ type DashboardData = {
   workflowRun: WorkflowRunSummary | null;
   artifacts: ArtifactRegistry | null;
   activities: WorkflowActivity[];
+  papers: PaperWorkspace[];
 };
 
 export default function DashboardPage() {
@@ -197,6 +200,7 @@ export default function DashboardPage() {
     workflowRun: null,
     artifacts: null,
     activities: [],
+    papers: [],
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
@@ -213,13 +217,14 @@ export default function DashboardPage() {
         const [health, projectsResponse] = await Promise.all([getHealth(), getProjects()]);
         const activeProjectId = projectsResponse[0]?.project_id || projectsResponse[0]?.id;
         const fallbackProjectId = activeProjectId || "PROJECT_001";
-        const [activeProject, intelligence, journalPlanner, workflowRun, artifacts, activities] = await Promise.all([
+        const [activeProject, intelligence, journalPlanner, workflowRun, artifacts, activities, papers] = await Promise.all([
           activeProjectId ? getProject(activeProjectId) : Promise.resolve(null),
           getIntelligence(fallbackProjectId),
           getJournalPlanner(fallbackProjectId),
           getWorkflowStatus(fallbackProjectId).catch(() => null),
           getArtifacts(fallbackProjectId).catch(() => null),
           getProjectActivities(fallbackProjectId).catch(() => []),
+          getPapers(fallbackProjectId).catch(() => []),
         ]);
 
         if (!cancelled) {
@@ -232,6 +237,7 @@ export default function DashboardPage() {
             workflowRun,
             artifacts,
             activities,
+            papers,
           });
         }
       } catch (loadError) {
@@ -276,6 +282,7 @@ export default function DashboardPage() {
 
   const projectCount = data.projects.length || 3;
   const paperCount =
+    data.papers.length ||
     data.projects.reduce((total, project) => total + project.target_papers, 0) ||
     data.journalPlanner?.suggested_papers.length ||
     8;
@@ -290,37 +297,34 @@ export default function DashboardPage() {
     ? Object.values(intelligence.audit).reduce((total, value) => total + value, 0)
     : 8;
 
-  const dashboardStats = useMemo(
-    () => [
-      {
-        label: "Projects",
-        value: String(projectCount).padStart(2, "0"),
-        icon: <FolderKanban className="size-5" />,
-        note: `${data.projects.filter((project) => project.status === "Active").length || 2} active`,
-      },
-      {
-        label: "Papers",
-        value: String(paperCount).padStart(2, "0"),
-        icon: <FileText className="size-5" />,
-        note: `${journalPlanner?.suggested_papers.length || 4} planned`,
-      },
-      { label: "Sections Locked", value: "31", icon: <FileCheck2 className="size-5" />, note: "18 this month" },
-      { label: "References", value: "218", icon: <Database className="size-5" />, note: "MFL verified" },
-      {
-        label: "Audit Status",
-        value: `${Math.max(0, 100 - auditIssueCount)}%`,
-        icon: <ShieldCheck className="size-5" />,
-        note: "Low risk",
-      },
-      {
-        label: "Last Activity",
-        value: activeProject?.last_activity?.split(", ")[1] || "08:30",
-        icon: <Clock3 className="size-5" />,
-        note: activeProject?.last_activity?.split(", ")[0] || "Today",
-      },
-    ],
-    [activeProject?.last_activity, auditIssueCount, data.projects, journalPlanner?.suggested_papers.length, paperCount, projectCount],
-  );
+  const dashboardStats = [
+    {
+      label: "Projects",
+      value: String(projectCount).padStart(2, "0"),
+      icon: <FolderKanban className="size-5" />,
+      note: `${data.projects.filter((project) => project.status === "Active").length || 2} active`,
+    },
+    {
+      label: "Papers",
+      value: String(paperCount).padStart(2, "0"),
+      icon: <FileText className="size-5" />,
+      note: `${data.papers.filter((paper) => paper.status !== "archived").length || journalPlanner?.suggested_papers.length || 4} active`,
+    },
+    { label: "Sections Locked", value: "31", icon: <FileCheck2 className="size-5" />, note: "18 this month" },
+    { label: "References", value: "218", icon: <Database className="size-5" />, note: "MFL verified" },
+    {
+      label: "Audit Status",
+      value: `${Math.max(0, 100 - auditIssueCount)}%`,
+      icon: <ShieldCheck className="size-5" />,
+      note: "Low risk",
+    },
+    {
+      label: "Last Activity",
+      value: activeProject?.last_activity?.split(", ")[1] || "08:30",
+      icon: <Clock3 className="size-5" />,
+      note: activeProject?.last_activity?.split(", ")[0] || "Today",
+    },
+  ];
 
   const dashboardRecentProjects =
     data.projects.length > 0

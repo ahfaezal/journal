@@ -21,17 +21,19 @@ import { AppShell } from "@/src/components/layouts/AppShell";
 import {
   getFormattedDocxDownloadUrl,
   getFullPaperMarkdownDownloadUrl,
+  getPapers,
   getPaperActivities,
   getSubmissionStatus,
+  type PaperWorkspace,
   type SubmissionStatus,
   type WorkflowActivity,
 } from "@/src/lib/api";
 
 const PROJECT_ID = "PROJECT_001";
-const paperOptions = [
-  { id: "PAPER_1", title: "Need Analysis Paper" },
-  { id: "PAPER_2", title: "Development & Validation Paper" },
-  { id: "PAPER_3", title: "Framework / Model Paper" },
+const fallbackPaperOptions: PaperWorkspace[] = [
+  { paper_id: "PAPER_1", project_id: PROJECT_ID, title: "Need Analysis Paper", paper_type: "Need Analysis", target_journal: "ICC2026", status: "planned", version: "v1", created_at: "", updated_at: "" },
+  { paper_id: "PAPER_2", project_id: PROJECT_ID, title: "Development Paper", paper_type: "Development", target_journal: "ICC2026", status: "planned", version: "v1", created_at: "", updated_at: "" },
+  { paper_id: "PAPER_3", project_id: PROJECT_ID, title: "Validation Paper", paper_type: "Validation", target_journal: "ICC2026", status: "planned", version: "v1", created_at: "", updated_at: "" },
 ];
 
 const fallbackSubmission: SubmissionStatus = {
@@ -106,6 +108,7 @@ function statusTone(status: string) {
 
 export default function FinalSubmissionPage() {
   const [selectedPaper, setSelectedPaper] = useState("PAPER_1");
+  const [paperOptions, setPaperOptions] = useState<PaperWorkspace[]>(fallbackPaperOptions);
   const [submission, setSubmission] = useState<SubmissionStatus>(fallbackSubmission);
   const [submissionHistory, setSubmissionHistory] = useState<WorkflowActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -146,8 +149,22 @@ export default function FinalSubmissionPage() {
     };
   }, [selectedPaper]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPapers() {
+      const papers = await getPapers(PROJECT_ID).catch(() => fallbackPaperOptions);
+      if (!cancelled) {
+        setPaperOptions(papers.length ? papers : fallbackPaperOptions);
+      }
+    }
+    loadPapers();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const selectedPaperTitle =
-    paperOptions.find((paper) => paper.id === selectedPaper)?.title ?? selectedPaper;
+    paperOptions.find((paper) => paper.paper_id === selectedPaper)?.title ?? selectedPaper;
   const submissionEvents = submissionHistory.filter((activity) =>
     [
       "final_submission",
@@ -252,21 +269,21 @@ export default function FinalSubmissionPage() {
             {paperOptions.map((paper) => (
               <button
                 className={`rounded-2xl border p-4 text-left transition ${
-                  selectedPaper === paper.id
+                  selectedPaper === paper.paper_id
                     ? "border-cyan-200 bg-cyan-50 ring-1 ring-cyan-100"
                     : "border-slate-200 bg-slate-50 hover:border-cyan-200 hover:bg-cyan-50/50"
                 }`}
-                key={paper.id}
-                onClick={() => setSelectedPaper(paper.id)}
+                key={paper.paper_id}
+                onClick={() => setSelectedPaper(paper.paper_id)}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[13px] font-semibold tracking-[0.16em] text-cyan-700">
-                      {paper.id}
+                      {paper.paper_id}
                     </div>
                     <div className="mt-1 text-lg font-semibold text-slate-950">{paper.title}</div>
                   </div>
-                  {selectedPaper === paper.id ? <CheckCircle2 className="size-5 text-cyan-700" /> : null}
+                  {selectedPaper === paper.paper_id ? <CheckCircle2 className="size-5 text-cyan-700" /> : null}
                 </div>
               </button>
             ))}

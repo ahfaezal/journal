@@ -33,8 +33,8 @@ def build_journal_plan(
         },
         {
             "paper_id": "PAPER_2",
-            "title": "Development & Validation Paper",
-            "paper_type": "Development and Validation",
+            "title": "Development Paper",
+            "paper_type": "Development",
             "thesis_scope": "Structured development workflow, framework construction, and expert validation.",
             "source_chapters": filter_chapters(chapters, ["Bab 2", "Bab 3", "Bab 4", "Bab 5"]),
             "objectives_used": objectives[1:3] or objectives or ["RO2", "RO3"],
@@ -46,8 +46,8 @@ def build_journal_plan(
         },
         {
             "paper_id": "PAPER_3",
-            "title": "Framework / Model Paper",
-            "paper_type": "Framework Synthesis",
+            "title": "Validation Paper",
+            "paper_type": "Validation",
             "thesis_scope": "Model synthesis, framework contribution, and conceptual consolidation.",
             "source_chapters": filter_chapters(chapters, ["Bab 4", "Bab 5"]),
             "objectives_used": objectives[-1:] or ["RO3"],

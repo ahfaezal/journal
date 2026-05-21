@@ -51,6 +51,25 @@ export type ProjectCreatePayload = {
   notes?: string;
 };
 
+export type PaperWorkspace = {
+  paper_id: string;
+  project_id: string;
+  title: string;
+  paper_type: string;
+  target_journal: string;
+  status: string;
+  version: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PaperCreatePayload = {
+  title: string;
+  paper_type?: string;
+  target_journal?: string;
+  status?: string;
+};
+
 export type IntelligenceSummary = {
   project_id: string;
   overall_score: number;
@@ -706,6 +725,40 @@ export async function updateProject(projectId: string, payload: Partial<ProjectC
 
 export async function deleteProject(projectId: string) {
   return mutation<{ project_id: string; deleted: boolean }>(`/projects/${projectId}`, "DELETE");
+}
+
+export async function getPapers(projectId: string) {
+  const data = await request<{ project_id: string; papers: PaperWorkspace[]; total: number }>(
+    `/papers/${projectId}`,
+  );
+
+  return data.papers;
+}
+
+export async function createPaper(projectId: string, payload: PaperCreatePayload) {
+  const data = await mutation<{ paper: PaperWorkspace }>(`/papers/${projectId}`, "POST", payload);
+  return data.paper;
+}
+
+export async function getPaper(projectId: string, paperId: string) {
+  const data = await request<{ paper: PaperWorkspace }>(`/papers/${projectId}/${paperId}`);
+  return data.paper;
+}
+
+export async function updatePaper(projectId: string, paperId: string, payload: Partial<PaperCreatePayload>) {
+  const data = await mutation<{ paper: PaperWorkspace }>(
+    `/papers/${projectId}/${paperId}`,
+    "PATCH",
+    payload,
+  );
+  return data.paper;
+}
+
+export async function deletePaper(projectId: string, paperId: string) {
+  return mutation<{ project_id: string; paper_id: string; deleted: boolean }>(
+    `/papers/${projectId}/${paperId}`,
+    "DELETE",
+  );
 }
 
 export function getIntelligence(projectId: string) {
