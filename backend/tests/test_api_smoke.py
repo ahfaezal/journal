@@ -88,6 +88,15 @@ def test_health_endpoint_is_wrapped(client: TestClient) -> None:
     assert data["service"] == "Thesis2Journal AI API"
 
 
+def test_openapi_schema_is_not_wrapped(client: TestClient) -> None:
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "openapi" in payload
+    assert "paths" in payload
+    assert "success" not in payload
+
+
 def test_projects_endpoints_are_wrapped(client: TestClient) -> None:
     projects_data = assert_wrapped_success(client.get("/projects"))
     assert projects_data["projects"]

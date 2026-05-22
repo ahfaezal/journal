@@ -23,8 +23,14 @@ app.add_middleware(
 )
 
 
+RAW_FASTAPI_DOCS_PATHS = {"/docs", "/openapi.json", "/redoc"}
+
+
 @app.middleware("http")
 async def standardize_json_responses(request: Request, call_next):
+    if request.url.path in RAW_FASTAPI_DOCS_PATHS:
+        return await call_next(request)
+
     response = await call_next(request)
     content_type = response.headers.get("content-type", "")
     if "application/json" not in content_type:
