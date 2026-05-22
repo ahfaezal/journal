@@ -12,6 +12,7 @@ CITATION_PATTERN = re.compile(
 NARRATIVE_CITATION_PATTERN = re.compile(
     r"\b([A-Z][A-Za-zÀ-ÿ'`\-]+(?:\s+et\s+al\.)?(?:\s+and\s+[A-Z][A-Za-zÀ-ÿ'`\-]+)?)\s*\((\d{4}[a-z]?)\)"
 )
+BRACKET_CITATION_PATTERN = re.compile(r"\(([^()]*\b(?:19|20)\d{2}[a-z]?[^()]*)\)")
 TABLE_CAPTION_PATTERN = re.compile(r"^\s*(?:Jadual|Table)\s+\d+(?:\.\d+)*\b.*", re.IGNORECASE)
 OBJECTIVE_PATTERN = re.compile(
     r"\b(?:objektif|objective|research objective|RO)\s*(?:kajian|research)?\s*\d*[:.)-]?\s*(.+)",
@@ -382,29 +383,57 @@ def extract_docx_tables(document: Document, source_file: str) -> list[dict[str, 
 
 def extract_citations(text: str, source_file: str, position: int) -> list[dict[str, Any]]:
     citations = []
+    captured = set()
     for match in CITATION_PATTERN.finditer(text):
-        citations.append(
-            {
-                "source_file": source_file,
-                "citation": match.group(0),
-                "author": match.group(1),
-                "year": match.group(2),
-                "position": position,
-            }
-        )
+        citation = match.group(0)
+        captured.add(citation)
+        citations.append(build_citation_row(source_file, citation, match.group(1), match.group(2), position))
+
+    for bracket_match in BRACKET_CITATION_PATTERN.finditer(text):
+        bracket_text = bracket_match.group(0)
+        if bracket_text in captured:
+            continue
+        inner_text = bracket_match.group(1)
+        for part in inner_text.split(";"):
+            parsed = parse_bracket_citation_part(part)
+            if parsed:
+                author, year = parsed
+                citation = f"({part.strip()})"
+                captured.add(citation)
+                citations.append(build_citation_row(source_file, citation, author, year, position))
 
     for match in NARRATIVE_CITATION_PATTERN.finditer(text):
-        citations.append(
-            {
-                "source_file": source_file,
-                "citation": match.group(0),
-                "author": match.group(1),
-                "year": match.group(2),
-                "position": position,
-            }
-        )
+        citation = match.group(0)
+        if citation not in captured:
+            citations.append(build_citation_row(source_file, citation, match.group(1), match.group(2), position))
 
     return citations
+
+
+def parse_bracket_citation_part(text: str) -> tuple[str, str] | None:
+    match = re.search(r"\b((?:19|20)\d{2}[a-z]?)\b", text)
+    if not match:
+        return None
+    author = text[: match.start()].strip(" ,")
+    if not author:
+        return None
+    return author, match.group(1)
+
+
+def build_citation_row(
+    source_file: str,
+    citation: str,
+    author: str,
+    year: str,
+    position: int,
+) -> dict[str, Any]:
+    return {
+        "source_file": source_file,
+        "citation": citation,
+        "author": author,
+        "year": year,
+        "position": position,
+    }
 
 
 def normalize_text(text: str) -> str:

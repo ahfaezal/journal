@@ -29,6 +29,9 @@ const fallbackCitationMap: CitationMap = {
   matched_citations: 0,
   unmatched_citations: 0,
   duplicate_citations: 0,
+  references_count: 0,
+  match_rate: 0,
+  mfl_match_status: "Not generated",
   citations: [],
 };
 
@@ -106,14 +109,18 @@ export default function CitationMapPage() {
 
   const summaryCards = [
     { label: "Total citations", value: citationMap.total_citations },
+    { label: "MFL references", value: citationMap.references_count ?? 0 },
     { label: "Unique citations", value: citationMap.unique_citations },
     { label: "Matched citations", value: citationMap.matched_citations },
     { label: "Unmatched citations", value: citationMap.unmatched_citations },
     { label: "Duplicate citations", value: citationMap.duplicate_citations },
+    { label: "Match rate", value: `${citationMap.match_rate ?? 0}%` },
   ];
   const issueRows = citationMap.citations.filter(
     (citation) => citation.mfl_status !== "matched" || citation.issue !== "No issue detected",
   );
+  const unmatchedRows = citationMap.citations.filter((citation) => citation.mfl_status !== "matched");
+  const duplicateRows = citationMap.citations.filter((citation) => citation.issue.includes("duplicate citation"));
 
   return (
     <AppShell>
@@ -154,6 +161,9 @@ export default function CitationMapPage() {
             <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-white/10">
               MFL: {citationMap.mfl_available ? "Available" : "Not detected"}
             </span>
+            <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-white/10">
+              Match: {citationMap.mfl_match_status ?? `${citationMap.match_rate ?? 0}% matched`}
+            </span>
             {notice ? (
               <span className="rounded-full bg-amber-300/15 px-3 py-1 text-[13px] font-semibold text-amber-100 ring-1 ring-amber-200/20">
                 {notice}
@@ -162,7 +172,7 @@ export default function CitationMapPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
           {summaryCards.map((card) => (
             <Card className="p-4" key={card.label}>
               <div className="flex items-center justify-between">
@@ -269,6 +279,66 @@ export default function CitationMapPage() {
                       <CheckCircle2 className="size-4" />
                       No issue detected
                     </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                  <AlertTriangle className="size-5" />
+                </div>
+                <h2 className="text-lg font-semibold text-slate-950">
+                  Top Unmatched
+                </h2>
+              </div>
+              <div className="space-y-3">
+                {unmatchedRows.length ? (
+                  unmatchedRows.slice(0, 6).map((citation, index) => (
+                    <div
+                      className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+                      key={`${citation.citation_text}-unmatched-${index}`}
+                    >
+                      <div className="font-semibold text-slate-950">{citation.citation_text}</div>
+                      <div className="mt-1 text-[13px] leading-5 text-slate-500">
+                        {citation.detected_author} ({citation.detected_year}) - {citation.issue}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-[15px] font-semibold text-emerald-700">
+                    All detected citations matched.
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700">
+                  <GitBranch className="size-5" />
+                </div>
+                <h2 className="text-lg font-semibold text-slate-950">
+                  Duplicate Citations
+                </h2>
+              </div>
+              <div className="space-y-3">
+                {duplicateRows.length ? (
+                  duplicateRows.slice(0, 6).map((citation, index) => (
+                    <div
+                      className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+                      key={`${citation.citation_text}-duplicate-${index}`}
+                    >
+                      <div className="font-semibold text-slate-950">{citation.citation_text}</div>
+                      <div className="mt-1 text-[13px] leading-5 text-slate-500">
+                        {citation.source_file}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-[15px] font-medium text-slate-500">
+                    No duplicate citation issue detected.
                   </div>
                 )}
               </div>

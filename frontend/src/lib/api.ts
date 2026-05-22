@@ -158,6 +158,8 @@ export type IntelligenceSummary = {
     total_citations: number;
     mapped_citations: number;
     unmatched_citations: number;
+    references_count?: number;
+    match_rate?: number;
     mfl_match_status: string;
   };
   objective_map?: Array<Record<string, string>>;
@@ -241,6 +243,8 @@ export type CitationMapRow = {
   source_file: string;
   source_section: string;
   mfl_status: string;
+  matched_reference?: string;
+  matched_title?: string;
   issue: string;
 };
 
@@ -253,6 +257,10 @@ export type CitationMap = {
   matched_citations: number;
   unmatched_citations: number;
   duplicate_citations: number;
+  references_count?: number;
+  match_rate?: number;
+  mfl_match_status?: string;
+  issues?: Record<string, number>;
   citations: CitationMapRow[];
 };
 

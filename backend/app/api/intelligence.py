@@ -7,6 +7,7 @@ from app.api.parser import parse_project_uploads, read_parsed_thesis
 from app.api.upload import get_project_upload_dir, read_upload_metadata
 from app.services.activity_logger_service import log_activity
 from app.services.artifact_registry_service import register_artifact
+from app.services.citation_mapper_service import build_citation_map
 from app.utils.file_utils import safe_read_json, safe_write_json
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
@@ -19,6 +20,14 @@ def get_intelligence_output_path(project_id: str) -> Path:
     output_dir = GENERATED_OUTPUT_ROOT / project_id
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir / "thesis_intelligence.json"
+
+
+def get_existing_citation_map(project_id: str) -> dict[str, object] | None:
+    citation_map_path = GENERATED_OUTPUT_ROOT / project_id / "citation_map.json"
+    if not citation_map_path.exists():
+        return None
+
+    return safe_read_json(citation_map_path)
 
 
 def build_fallback_intelligence(project_id: str) -> dict[str, object]:
@@ -106,6 +115,13 @@ def build_thesis_intelligence(project_id: str) -> dict[str, object]:
     references_count = len(parsed_thesis.get("references", [])) if parsed_thesis else 0
     objectives_count = len(parsed_thesis.get("objectives", [])) if parsed_thesis else 0
     table_captions = parsed_thesis.get("table_captions", []) if parsed_thesis else []
+    citation_map = get_existing_citation_map(project_id)
+    if parsed_thesis and not citation_map:
+        citation_map = build_citation_map(project_id, parsed_thesis, metadata)
+    mfl_references_count = int(citation_map.get("references_count", 0)) if citation_map else 0
+    mapped_citations = int(citation_map.get("matched_citations", 0)) if citation_map else 0
+    unmatched_citations = int(citation_map.get("unmatched_citations", citations_count)) if citation_map else citations_count
+    match_rate = float(citation_map.get("match_rate", 0)) if citation_map else 0
 
     audit_issues = {
         "unsupported_claims": 3 if required_ready and citations_count else 6,
@@ -127,14 +143,16 @@ def build_thesis_intelligence(project_id: str) -> dict[str, object]:
         "paragraphs_count": paragraphs_count,
         "tables_count": tables_count,
         "citations_count": citations_count,
-        "references_count": references_count,
+        "references_count": mfl_references_count or references_count,
         "objectives_count": objectives_count,
         "table_map": build_table_map(table_captions, tables_count, uploaded_files),
         "citation_map": {
             "total_citations": citations_count,
-            "mapped_citations": min(citations_count, references_count) if has_mfl else 0,
-            "unmatched_citations": max(citations_count - references_count, 0) if has_mfl else citations_count,
-            "mfl_match_status": "MFL uploaded" if has_mfl else "MFL missing",
+            "mapped_citations": mapped_citations,
+            "unmatched_citations": unmatched_citations,
+            "references_count": mfl_references_count,
+            "match_rate": match_rate,
+            "mfl_match_status": f"{match_rate}% matched" if has_mfl else "MFL missing",
         },
         "objective_map": build_objective_map(parsed_thesis, uploaded_chapters),
         "audit_issues": audit_issues,

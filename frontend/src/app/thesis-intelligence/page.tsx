@@ -344,6 +344,7 @@ export default function ThesisIntelligencePage() {
                 ["Total citations", String(citationMap?.total_citations ?? 218)],
                 ["Mapped citations", String(citationMap?.mapped_citations ?? 205)],
                 ["Unmatched citations", String(citationMap?.unmatched_citations ?? 13)],
+                ["MFL references", String(citationMap?.references_count ?? intelligence?.references_count ?? 0)],
                 ["MFL match status", citationMap?.mfl_match_status ?? "94%"],
               ].map(([label, value]) => (
                 <div className="rounded-xl border border-slate-100 bg-slate-50 p-4" key={label}>
