@@ -863,8 +863,16 @@ UNIVERSAL_SPECIFIC_SUBHEADING_PATTERN = re.compile(
     r"^\s*(?:\d+(?:\.\d+)*\s+)?(?:objektif\s+khusus|specific\s+(?:research\s+)?objectives?)\s*$",
     re.IGNORECASE,
 )
+UNIVERSAL_SPECIFIC_TRIGGER_PATTERN = re.compile(
+    r"\b(?:the\s+)?specific\s+(?:research\s+)?objectives(?:\s+developed\s+to\s+answer)?(?:[^:]{0,120})?(?:are|:)\b",
+    re.IGNORECASE,
+)
 UNIVERSAL_GENERAL_SUBHEADING_PATTERN = re.compile(
     r"^\s*(?:\d+(?:\.\d+)*\s+)?(?:objektif\s+umum|general\s+(?:research\s+)?objective)\s*$",
+    re.IGNORECASE,
+)
+UNIVERSAL_GENERAL_OBJECTIVE_SENTENCE_PATTERN = re.compile(
+    r"\b(?:the\s+)?general\s+research\s+objective\s+of\s+this\s+study\s+is\s+to\s+(.+)",
     re.IGNORECASE,
 )
 UNIVERSAL_FALSE_OBJECTIVE_PATTERN = re.compile(
@@ -1076,8 +1084,11 @@ def build_objective_debug(
         "detected_objectives": objectives,
         "objective_count": len(objectives),
         "objective_section_length": len(section),
+        "full_objective_section": raw_objective_section,
         "objective_section_start": min(section_positions) if section_positions else "",
         "objective_section_end": max(section_positions) if section_positions else "",
+        "stop_reason": selected_heading.get("_objective_stop_reason", ""),
+        "stop_heading": selected_heading.get("_objective_stop_heading", ""),
         "objective_source_page": selected_heading.get("page", ""),
         "candidate_headings_found": candidate_headings_found or [],
     }
@@ -1289,8 +1300,11 @@ def collect_universal_objective_section(
     headings: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     heading_position = int(selected_heading.get("position", 0) or 0)
-    stop_position = find_universal_stop_position(source_file, heading_position, headings)
+    stop_position, stop_heading = find_universal_stop_position(source_file, heading_position, headings)
+    selected_heading["_objective_stop_reason"] = "real_stop_heading" if stop_position else "end_of_chapter_or_document"
+    selected_heading["_objective_stop_heading"] = stop_heading
     section = []
+    collected_chars = 0
     for paragraph in paragraphs:
         if str(paragraph.get("source_file", source_file)) != source_file:
             continue
@@ -1300,13 +1314,23 @@ def collect_universal_objective_section(
         if stop_position and position >= stop_position:
             break
         text = str(paragraph.get("text", ""))
-        if UNIVERSAL_STOP_HEADING_PATTERN.search(text):
+        if is_chapter_boundary_heading(text):
+            selected_heading["_objective_stop_reason"] = "chapter_boundary"
+            selected_heading["_objective_stop_heading"] = text
             break
-        section.append({**paragraph, "text": cleanup_pdf_fragment(text)})
+        if is_real_objective_stop_heading(text):
+            selected_heading["_objective_stop_reason"] = "real_stop_heading"
+            selected_heading["_objective_stop_heading"] = text
+            break
+        cleaned = cleanup_pdf_fragment(text)
+        if is_broken_pdf_line_fragment(cleaned):
+            continue
+        section.append({**paragraph, "text": cleaned})
+        collected_chars += len(cleaned)
     return [item for item in section if item.get("text")]
 
 
-def find_universal_stop_position(source_file: str, heading_position: int, headings: list[dict[str, Any]]) -> int | None:
+def find_universal_stop_position(source_file: str, heading_position: int, headings: list[dict[str, Any]]) -> tuple[int | None, str]:
     stops = []
     for heading in headings:
         if str(heading.get("source_file", source_file)) != source_file:
@@ -1317,9 +1341,36 @@ def find_universal_stop_position(source_file: str, heading_position: int, headin
             continue
         if is_objective_subsection_label(text):
             continue
-        if UNIVERSAL_STOP_HEADING_PATTERN.search(text) or is_likely_major_heading(text):
-            stops.append(position)
-    return min(stops) if stops else None
+        if is_real_objective_stop_heading(text) or is_chapter_boundary_heading(text):
+            stops.append((position, text))
+    if not stops:
+        return None, ""
+    return min(stops, key=lambda item: item[0])
+
+
+def is_real_objective_stop_heading(text: str) -> bool:
+    normalized = normalize_text(text).strip()
+    if is_broken_pdf_line_fragment(normalized):
+        return False
+    if not UNIVERSAL_STOP_HEADING_PATTERN.search(normalized):
+        return False
+    if re.match(r"^\s*\d+(?:\.\d+){0,4}\s+(?:research\s+questions?|persoalan\s+kajian|hypotheses|hipotesis|significance\s+of\s+(?:the\s+)?study|kepentingan\s+kajian|scope\s+of\s+(?:the\s+)?study|skop\s+kajian|limitations|literature\s+review|sorotan\s+literatur)\b", normalized, re.IGNORECASE):
+        return True
+    return bool(
+        re.match(
+            r"^\s*(?:research\s+questions?|persoalan\s+kajian|hypotheses|hipotesis|significance\s+of\s+(?:the\s+)?study|kepentingan\s+kajian|scope\s+of\s+(?:the\s+)?study|skop\s+kajian|limitations|literature\s+review|sorotan\s+literatur)\s*$",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
+
+
+def is_chapter_boundary_heading(text: str) -> bool:
+    return bool(re.match(r"^\s*(?:chapter|bab)\s*(?:2|ii)\b", text, re.IGNORECASE))
+
+
+def is_broken_pdf_line_fragment(text: str) -> bool:
+    return normalize_text(text).lower() in {"the", "this", "these", "general", "specific"}
 
 
 def is_objective_subsection_label(text: str) -> bool:
@@ -1335,6 +1386,23 @@ def extract_general_objective(
     selected_heading: dict[str, Any],
     section: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    for item in section:
+        text = str(item.get("text", ""))
+        match = UNIVERSAL_GENERAL_OBJECTIVE_SENTENCE_PATTERN.search(text)
+        if not match:
+            continue
+        cleaned = strip_objective_prefix(match.group(1))
+        if is_objective_sentence(cleaned, allow_without_prefix=True):
+            return {
+                "objective_text": cleaned,
+                "source_file": source_file,
+                "source_chapter": "Bab 1",
+                "source_heading": str(selected_heading.get("text", "Research Objectives")),
+                "confidence_score": 70,
+                "extraction_status": "general_objective",
+                "objective_source_page": item.get("page", ""),
+            }
+
     for index, item in enumerate(section):
         text = str(item.get("text", ""))
         if not UNIVERSAL_GENERAL_SUBHEADING_PATTERN.match(text):
@@ -1361,6 +1429,8 @@ def extract_general_objective(
 def choose_specific_section(section: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     for index, item in enumerate(section):
         if UNIVERSAL_SPECIFIC_SUBHEADING_PATTERN.match(str(item.get("text", ""))):
+            return section[index + 1 :], item
+        if UNIVERSAL_SPECIFIC_TRIGGER_PATTERN.search(str(item.get("text", ""))):
             return section[index + 1 :], item
     return section, None
 

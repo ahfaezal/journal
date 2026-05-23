@@ -261,3 +261,44 @@ def test_objective_section_continues_through_general_and_specific_subheadings() 
     assert "1.5.1 Objektif Umum" in debug["raw_objective_section_preview"]
     assert "1.5.2 Objektif Khusus" in debug["raw_objective_section_preview"]
     assert "1.6 Persoalan Kajian" not in debug["raw_objective_section_preview"]
+
+
+def test_project_004_style_english_objectives_continue_after_general_objective() -> None:
+    lines = [
+        "1.5 Research Objectives",
+        "The general research objective of this study is to investigate the integrity officer competency framework in public sector governance.",
+        "The",
+        "The specific research objectives developed to answer the research questions of this study are:",
+        "i. To determine the competency requirements of integrity officers in public sector organisations.",
+        "ii. To determine the relationship between governance practices and integrity officer readiness.",
+        "iii. To determine the validation requirements for an integrity officer competency framework.",
+        "1.6 Research Questions",
+        "What are the competency requirements of integrity officers?",
+    ]
+    document = {
+        "source_file": "Chapter 1.pdf",
+        "paragraphs": [
+            {"source_file": "Chapter 1.pdf", "text": text, "position": index, "page": 1}
+            for index, text in enumerate(lines, start=1)
+        ],
+        "headings": [
+            {"source_file": "Chapter 1.pdf", "text": text, "position": index, "page": 1}
+            for index, text in enumerate(lines, start=1)
+            if index in {1, 3, 8}
+        ],
+        "chapters": [{"label": "Chapter 1"}],
+    }
+
+    result = extract_research_objectives_result([document], [])
+    debug = result["objective_debug"]
+
+    assert result["objective_extraction_status"] == "extracted"
+    assert result["objective_extraction_metadata"]["selected_heading"] == "1.5 Research Objectives"
+    assert len(result["objectives"]) == 3
+    assert result["general_objective"]["objective_text"].startswith("investigate the integrity officer")
+    assert result["objective_extraction_metadata"]["selected_subheading"].startswith("The specific research objectives")
+    assert "The specific research objectives developed" in debug["full_objective_section"]
+    assert "i. To determine" in debug["full_objective_section"]
+    assert "1.6 Research Questions" not in debug["full_objective_section"]
+    assert debug["stop_reason"] == "real_stop_heading"
+    assert debug["stop_heading"] == "1.6 Research Questions"
