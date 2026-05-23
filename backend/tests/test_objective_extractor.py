@@ -140,3 +140,44 @@ def test_false_positive_learning_and_module_objectives_are_rejected() -> None:
 
     assert len(result["objectives"]) == 1
     assert "learning" not in result["objectives"][0]["objective_text"].lower()
+
+
+def test_objective_heading_ranking_prefers_bab_1_and_rejects_discussion_heading() -> None:
+    result = extract_research_objectives_result(
+        [
+            build_document(
+                [
+                    "Keselarasan antara dapatan, objektif kajian dan teori sokongan yang digunakan",
+                    "Perbincangan ini menghuraikan hubungan objektif kajian dengan dapatan.",
+                ],
+                source_file="Bab 5.pdf",
+            ),
+            build_document(
+                [
+                    "Objektif Kajian",
+                    "1. Mengenal pasti keperluan pembangunan modul dakwah pensyarah IPT.",
+                    "2. Membangunkan kerangka modul dakwah pensyarah IPT berdasarkan dapatan kajian.",
+                    "3. Mengesahkan kerangka modul dakwah pensyarah IPT melalui semakan pakar akademik.",
+                    "Persoalan Kajian",
+                ],
+                source_file="Bab 1.pdf",
+            ),
+        ],
+        [],
+    )
+
+    metadata = result["objective_extraction_metadata"]
+    candidates = metadata["candidate_headings_found"]
+
+    assert result["objective_extraction_status"] == "extracted"
+    assert metadata["selected_heading"] == "Objektif Kajian"
+    assert len(result["objectives"]) == 3
+    assert any(
+        item["heading"].startswith("Keselarasan antara dapatan")
+        and item["chapter"] == "Bab 5"
+        and item["score"] == 10
+        and item["rejected"] is True
+        for item in candidates
+    )
+    assert candidates[0]["heading"] == "Objektif Kajian"
+    assert candidates[0]["chapter"] == "Bab 1"

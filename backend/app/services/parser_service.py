@@ -932,7 +932,11 @@ def extract_research_objectives_result(
         "reason_for_fallback": "",
         "detected_objectives": [],
         "fallback_reason": "",
+        "candidate_headings_found": [],
     }
+    candidate_headings_found = collect_objective_heading_candidates(documents)
+    metadata["candidate_headings_found"] = candidate_headings_found
+    objective_debug["candidate_headings_found"] = candidate_headings_found
 
     for document in search_documents:
         source_file = str(document.get("source_file", "Unknown file"))
@@ -951,6 +955,7 @@ def extract_research_objectives_result(
                 objectives=[],
                 extraction_status="fallback",
                 reason_for_fallback="objective heading found but objective section is empty",
+                candidate_headings_found=candidate_headings_found,
             )
             continue
 
@@ -970,6 +975,7 @@ def extract_research_objectives_result(
             objectives=objectives,
             extraction_status="extracted" if objectives else "fallback",
             reason_for_fallback="" if objectives else "objective section found but no numbered, bullet, or phase objectives were extracted",
+            candidate_headings_found=candidate_headings_found,
         )
 
         metadata = {
@@ -980,6 +986,7 @@ def extract_research_objectives_result(
             "source_file": source_file,
             "objective_source_page": selected_heading.get("page", ""),
             "confidence_score": max((int(item.get("confidence_score", 0) or 0) for item in objectives), default=0),
+            "candidate_headings_found": candidate_headings_found,
         }
         logger.info(
             "objective extraction metadata: selected_heading=%s selected_subheading=%s objective_count=%s objective_source_page=%s",
@@ -1030,14 +1037,20 @@ def find_universal_objective_heading(
     headings: list[dict[str, Any]],
     paragraphs: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    for heading in headings:
-        if is_universal_objective_heading(str(heading.get("text", ""))):
-            return heading
-    for paragraph in paragraphs:
-        text = str(paragraph.get("text", ""))
-        if len(text) <= 220 and is_universal_objective_heading(text):
-            return paragraph
-    return None
+    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    for item in [*headings, *paragraphs]:
+        text = str(item.get("text", ""))
+        if len(text) > 240:
+            continue
+        score, rejected, _reason = score_objective_heading(text)
+        if score <= 0 or rejected:
+            continue
+        position = int(item.get("position", 0) or 0)
+        ranked.append((score, -position, item))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda candidate: (candidate[0], candidate[1]), reverse=True)
+    return ranked[0][2]
 
 
 def build_objective_debug(
@@ -1047,6 +1060,7 @@ def build_objective_debug(
     objectives: list[dict[str, Any]],
     extraction_status: str,
     reason_for_fallback: str,
+    candidate_headings_found: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     raw_objective_section = "\n".join(str(item.get("text", "")) for item in section if item.get("text"))
     return {
@@ -1059,6 +1073,7 @@ def build_objective_debug(
         "detected_objectives": objectives,
         "objective_count": len(objectives),
         "objective_source_page": selected_heading.get("page", ""),
+        "candidate_headings_found": candidate_headings_found or [],
     }
 
 
@@ -1073,7 +1088,133 @@ def log_objective_debug(objective_debug: dict[str, Any]) -> None:
 
 
 def is_universal_objective_heading(text: str) -> bool:
-    return bool(UNIVERSAL_OBJECTIVE_HEADING_PATTERN.search(text)) and not UNIVERSAL_FALSE_OBJECTIVE_PATTERN.search(text)
+    score, rejected, _reason = score_objective_heading(text)
+    return score > 0 and not rejected
+
+
+OBJECTIVE_HEADING_PRIORITIES: tuple[tuple[str, int], ...] = (
+    ("specific research objectives", 100),
+    ("objectives of the study", 100),
+    ("objektif penyelidikan", 100),
+    ("research objectives", 100),
+    ("matlamat dan objektif kajian", 80),
+    ("objektif kajian", 100),
+    ("research aim and objectives", 90),
+    ("aim and objectives", 90),
+    ("tujuan kajian", 90),
+    ("objektif umum dan objektif khusus", 85),
+    ("general objective and specific objectives", 85),
+    ("specific objectives", 85),
+    ("objektif khusus", 85),
+)
+
+
+OBJECTIVE_CONTEXT_REJECT_TERMS = (
+    "keselarasan",
+    "hubungan",
+    "pencapaian",
+    "perbincangan",
+    "penilaian",
+    "alignment",
+    "relationship",
+    "achievement",
+    "discussion",
+    "evaluation",
+)
+
+
+def collect_objective_heading_candidates(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for document in documents:
+        chapter = infer_document_chapter(document)
+        source_file = str(document.get("source_file", "Unknown file"))
+        items = [
+            item
+            for item in [
+                *[entry for entry in document.get("headings", []) if isinstance(entry, dict)],
+                *[entry for entry in document.get("paragraphs", []) if isinstance(entry, dict)],
+            ]
+            if len(str(item.get("text", ""))) <= 240
+        ]
+        seen: set[tuple[str, int]] = set()
+        for item in items:
+            heading = str(item.get("text", "")).strip()
+            key = (normalize_text(heading).lower(), int(item.get("position", 0) or 0))
+            if not heading or key in seen:
+                continue
+            seen.add(key)
+            score, rejected, reason = score_objective_heading(heading)
+            if score <= 0:
+                continue
+            candidates.append(
+                {
+                    "heading": heading,
+                    "chapter": chapter,
+                    "source_file": source_file,
+                    "position": item.get("position", ""),
+                    "page": item.get("page", ""),
+                    "score": score,
+                    "base_score": score,
+                    "rejected": rejected,
+                    "rejected_reason": reason if rejected else "",
+                }
+            )
+    candidates.sort(
+        key=lambda item: (
+            bool(item.get("rejected", False)),
+            -int(item.get("score", 0) or 0),
+            not is_chapter_one_label(str(item.get("chapter", ""))),
+            int(item.get("position", 999999) or 999999),
+        )
+    )
+    return candidates
+
+
+def score_objective_heading(text: str) -> tuple[int, bool, str]:
+    cleaned = normalize_text(text).strip()
+    lowered = cleaned.lower()
+    if not cleaned:
+        return 0, False, ""
+    if UNIVERSAL_FALSE_OBJECTIVE_PATTERN.search(cleaned):
+        return 10, True, "non-research objective heading"
+    if any(term in lowered for term in OBJECTIVE_CONTEXT_REJECT_TERMS) and re.search(r"\b(objektif|objective|objectives)\b", lowered):
+        return 10, True, "discussion, alignment, evaluation, or achievement heading"
+
+    for phrase, priority in OBJECTIVE_HEADING_PRIORITIES:
+        if phrase not in lowered:
+            continue
+        extra_words = count_heading_extra_words(lowered, phrase)
+        if extra_words > 4:
+            return 10, True, "objective phrase appears inside a long non-section heading"
+        return priority, False, ""
+
+    if re.search(r"\b(objektif|objective|objectives)\b", lowered):
+        return 10, True, "generic objective mention is not a ranked objective heading"
+    return 0, False, ""
+
+
+def count_heading_extra_words(heading: str, phrase: str) -> int:
+    heading_words = re.findall(r"[a-zA-ZÀ-ž0-9]+", heading)
+    phrase_words = re.findall(r"[a-zA-ZÀ-ž0-9]+", phrase)
+    return max(0, len(heading_words) - len(phrase_words))
+
+
+def infer_document_chapter(document: dict[str, Any]) -> str:
+    source_file = str(document.get("source_file", ""))
+    chapter_match = re.search(r"\b(bab|chapter)\s*([0-9ivx]+)\b", source_file, re.IGNORECASE)
+    if chapter_match:
+        label = chapter_match.group(1).title()
+        return f"{label} {chapter_match.group(2).upper()}"
+    chapters = [item for item in document.get("chapters", []) if isinstance(item, dict)]
+    if chapters:
+        label = str(chapters[0].get("label", "")).strip()
+        if label:
+            return label
+    return "Unknown"
+
+
+def is_chapter_one_label(label: str) -> bool:
+    return bool(re.search(r"\b(bab|chapter)\s*(1|i)\b", label, re.IGNORECASE))
 
 
 def collect_universal_objective_section(
