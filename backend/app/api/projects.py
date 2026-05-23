@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from uuid import uuid4
 
@@ -6,9 +7,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.constants import GENERATED_OUTPUT_ROOT
 from app.core.config import settings
 from app.database.database import SessionLocal, is_database_available
 from app.database.models import Project
+from app.utils.file_utils import ensure_dir, safe_read_json, safe_write_json, utc_now_iso
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -113,6 +116,97 @@ def target_papers_for_output(target_output: str | None) -> int:
     return 1
 
 
+def json_projects_path():
+    return GENERATED_OUTPUT_ROOT / "projects.json"
+
+
+def read_json_project_store() -> list[dict[str, object]]:
+    path = json_projects_path()
+    if not path.exists():
+        seed_projects = [
+            {
+                **project,
+                "is_deleted": False,
+                "created_at": project.get("created_at", ""),
+                "updated_at": project.get("updated_at", ""),
+            }
+            for project in MOCK_PROJECTS
+        ]
+        write_json_project_store(seed_projects)
+        return seed_projects
+
+    payload = safe_read_json(path) or {}
+    projects = payload.get("projects", [])
+    if not isinstance(projects, list):
+        return []
+    return [project for project in projects if isinstance(project, dict)]
+
+
+def write_json_project_store(projects: list[dict[str, object]]) -> None:
+    ensure_dir(json_projects_path().parent)
+    safe_write_json(json_projects_path(), {"projects": projects}, add_metadata=False)
+
+
+def visible_json_projects() -> list[dict[str, object]]:
+    return [project for project in read_json_project_store() if not project.get("is_deleted")]
+
+
+def find_json_project(project_id: str) -> dict[str, object] | None:
+    return next(
+        (
+            project
+            for project in visible_json_projects()
+            if project.get("id") == project_id
+            or project.get("project_id") == project_id
+            or project.get("human_readable_code") == project_id
+        ),
+        None,
+    )
+
+
+def next_json_project_code(projects: list[dict[str, object]]) -> str:
+    highest = 0
+    for project in projects:
+        for key in ("project_id", "id", "human_readable_code"):
+            value = str(project.get(key, ""))
+            match = re.match(r"^PROJECT_(\d+)$", value)
+            if match:
+                highest = max(highest, int(match.group(1)))
+    return f"PROJECT_{highest + 1:03d}"
+
+
+def create_json_project(payload: ProjectCreate) -> dict[str, object]:
+    projects = read_json_project_store()
+    project_code = next_json_project_code(projects)
+    timestamp = utc_now_iso()
+    project = {
+        "id": project_code,
+        "project_id": project_code,
+        "human_readable_code": project_code,
+        "name": payload.title.strip(),
+        "title": payload.title.strip(),
+        "thesis_title": payload.thesis_title or "",
+        "thesis_type": payload.research_type or "",
+        "research_type": payload.research_type or "",
+        "target_output": payload.target_output or "",
+        "target_template": payload.target_template or "",
+        "target_papers": target_papers_for_output(payload.target_output),
+        "progress": 0,
+        "intelligence_score": 0,
+        "status": payload.status,
+        "primary_author": payload.primary_author or "",
+        "institution": payload.institution or "",
+        "last_activity": "Just now",
+        "is_deleted": False,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "metadata_json": {"notes": payload.notes} if payload.notes else {},
+    }
+    projects.append(project)
+    write_json_project_store(projects)
+    return project
+
+
 def serialize_project(project: Project) -> dict[str, object]:
     target_papers = target_papers_for_output(project.target_output)
     return {
@@ -179,7 +273,7 @@ def generate_human_readable_code(db: Session) -> str:
 @router.get("")
 def get_projects() -> dict[str, list[dict[str, object]]]:
     if not database_enabled():
-        return {"projects": MOCK_PROJECTS}
+        return {"projects": visible_json_projects()}
 
     with open_session() as db:
         projects = db.scalars(
@@ -199,7 +293,7 @@ def get_project(project_id: str) -> dict[str, object]:
                 return {"project": serialize_project(project)}
             raise HTTPException(status_code=404, detail="Project not found")
 
-    project = find_mock_project(project_id)
+    project = find_json_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"project": project}
@@ -208,25 +302,7 @@ def get_project(project_id: str) -> dict[str, object]:
 @router.post("")
 def create_project(payload: ProjectCreate) -> dict[str, object]:
     if not database_enabled():
-        created = {
-            **MOCK_PROJECTS[0],
-            "id": f"THESIS-{datetime.utcnow().year}-001",
-            "project_id": str(uuid4()),
-            "human_readable_code": f"THESIS-{datetime.utcnow().year}-001",
-            "name": payload.title,
-            "title": payload.title,
-            "thesis_title": payload.thesis_title or "",
-            "thesis_type": payload.research_type or "",
-            "research_type": payload.research_type or "",
-            "target_output": payload.target_output or "",
-            "target_template": payload.target_template or "",
-            "target_papers": target_papers_for_output(payload.target_output),
-            "status": payload.status,
-            "primary_author": payload.primary_author or "",
-            "institution": payload.institution or "",
-            "last_activity": "Just now",
-        }
-        return {"project": created}
+        return {"project": create_json_project(payload)}
 
     with open_session() as db:
         project = Project(
@@ -267,9 +343,24 @@ def update_project(project_id: str, payload: ProjectUpdate) -> dict[str, object]
             db.refresh(project)
             return {"project": serialize_project(project)}
 
-    project = find_mock_project(project_id)
-    if project is None:
+    projects = read_json_project_store()
+    project_index = next(
+        (
+            index
+            for index, project in enumerate(projects)
+            if not project.get("is_deleted")
+            and (
+                project.get("id") == project_id
+                or project.get("project_id") == project_id
+                or project.get("human_readable_code") == project_id
+            )
+        ),
+        None,
+    )
+    if project_index is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    project = projects[project_index]
+    notes = update_data.pop("notes", None)
     updated = {
         **project,
         **{key: value for key, value in update_data.items() if value is not None},
@@ -278,6 +369,14 @@ def update_project(project_id: str, payload: ProjectUpdate) -> dict[str, object]
         updated["name"] = updated["title"]
     if "research_type" in updated:
         updated["thesis_type"] = updated["research_type"]
+    if "target_output" in updated:
+        updated["target_papers"] = target_papers_for_output(str(updated.get("target_output", "")))
+    if notes is not None:
+        updated["metadata_json"] = {**(updated.get("metadata_json") or {}), "notes": notes}
+    updated["updated_at"] = utc_now_iso()
+    updated["last_activity"] = "Just now"
+    projects[project_index] = updated
+    write_json_project_store(projects)
     return {"project": updated}
 
 
@@ -293,7 +392,28 @@ def delete_project(project_id: str) -> dict[str, object]:
             db.commit()
             return {"project_id": project_id, "deleted": True}
 
-    project = find_mock_project(project_id)
-    if project is None:
+    projects = read_json_project_store()
+    project_index = next(
+        (
+            index
+            for index, project in enumerate(projects)
+            if not project.get("is_deleted")
+            and (
+                project.get("id") == project_id
+                or project.get("project_id") == project_id
+                or project.get("human_readable_code") == project_id
+            )
+        ),
+        None,
+    )
+    if project_index is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    projects[project_index] = {
+        **projects[project_index],
+        "is_deleted": True,
+        "status": "Deleted",
+        "updated_at": utc_now_iso(),
+        "archived_at": utc_now_iso(),
+    }
+    write_json_project_store(projects)
     return {"project_id": project_id, "deleted": True}

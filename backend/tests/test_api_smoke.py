@@ -4,7 +4,7 @@ import pytest
 from docx import Document
 from fastapi.testclient import TestClient
 
-from app.api import audit, citation, intelligence, journal, knowledge_graph, objective, parser, table, upload, workflow
+from app.api import audit, citation, intelligence, journal, knowledge_graph, objective, parser, projects, table, upload, workflow
 from app.api.upload import write_upload_metadata
 from app.main import app
 
@@ -20,6 +20,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     monkeypatch.setattr(upload, "UPLOAD_ROOT", upload_root)
     monkeypatch.setattr(parser, "GENERATED_OUTPUT_ROOT", generated_root)
+    monkeypatch.setattr(projects, "GENERATED_OUTPUT_ROOT", generated_root)
     monkeypatch.setattr(intelligence, "GENERATED_OUTPUT_ROOT", generated_root)
     monkeypatch.setattr(citation, "GENERATED_OUTPUT_ROOT", generated_root)
     monkeypatch.setattr(objective, "GENERATED_OUTPUT_ROOT", generated_root)
