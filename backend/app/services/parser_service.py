@@ -94,6 +94,7 @@ def parse_uploaded_documents(upload_dir: Path) -> dict[str, Any]:
         "general_objective": objective_result["general_objective"],
         "rejected_objective_candidates": objective_result["rejected_objective_candidates"],
         "objective_extraction_metadata": objective_result["objective_extraction_metadata"],
+        "objective_debug": objective_result.get("objective_debug", {}),
         **normalized,
     }
 
@@ -923,6 +924,15 @@ def extract_research_objectives_result(
         "objective_source_page": "",
         "confidence_score": 0,
     }
+    objective_debug: dict[str, Any] = {
+        "raw_objective_section": "",
+        "selected_heading": "",
+        "selected_subheading": "",
+        "objective_extraction_status": "not_found",
+        "reason_for_fallback": "",
+        "detected_objectives": [],
+        "fallback_reason": "",
+    }
 
     for document in search_documents:
         source_file = str(document.get("source_file", "Unknown file"))
@@ -934,6 +944,14 @@ def extract_research_objectives_result(
 
         section = collect_universal_objective_section(source_file, selected_heading, paragraphs, headings)
         if not section:
+            objective_debug = build_objective_debug(
+                selected_heading=selected_heading,
+                selected_subheading=None,
+                section=[],
+                objectives=[],
+                extraction_status="fallback",
+                reason_for_fallback="objective heading found but objective section is empty",
+            )
             continue
 
         general_objective = extract_general_objective(source_file, selected_heading, section)
@@ -945,6 +963,14 @@ def extract_research_objectives_result(
             section=specific_section,
         )
         rejected.extend(local_rejected)
+        objective_debug = build_objective_debug(
+            selected_heading=selected_heading,
+            selected_subheading=selected_subheading,
+            section=section,
+            objectives=objectives,
+            extraction_status="extracted" if objectives else "fallback",
+            reason_for_fallback="" if objectives else "objective section found but no numbered, bullet, or phase objectives were extracted",
+        )
 
         metadata = {
             "selected_heading": str(selected_heading.get("text", "")),
@@ -962,6 +988,7 @@ def extract_research_objectives_result(
             len(objectives),
             metadata["objective_source_page"],
         )
+        log_objective_debug(objective_debug)
         extracted.extend(objectives)
         if extracted:
             break
@@ -975,19 +1002,27 @@ def extract_research_objectives_result(
             "objectives": assigned,
             "rejected_objective_candidates": rejected,
             "objective_extraction_metadata": metadata,
+            "objective_debug": objective_debug,
         }
 
     fallback = build_fallback_objectives(search_documents, objective_candidates)
     rejected.extend(reject_objective_candidates(objective_candidates, "no structured research objective section found"))
     metadata["extraction_strategy"] = "fallback"
     metadata["confidence_score"] = 40
+    reason_for_fallback = objective_debug.get("reason_for_fallback") or "no structured research objective section found"
+    objective_debug["objective_extraction_status"] = "fallback"
+    objective_debug["reason_for_fallback"] = reason_for_fallback
+    objective_debug["fallback_reason"] = reason_for_fallback
+    objective_debug["detected_objectives"] = fallback
     logger.info("objective extraction fallback used: count=%s", len(fallback))
+    log_objective_debug(objective_debug)
     return {
         "objective_extraction_status": "fallback",
         "general_objective": general_objective or {},
         "objectives": fallback,
         "rejected_objective_candidates": rejected,
         "objective_extraction_metadata": metadata,
+        "objective_debug": objective_debug,
     }
 
 
@@ -1003,6 +1038,38 @@ def find_universal_objective_heading(
         if len(text) <= 220 and is_universal_objective_heading(text):
             return paragraph
     return None
+
+
+def build_objective_debug(
+    selected_heading: dict[str, Any],
+    selected_subheading: dict[str, Any] | None,
+    section: list[dict[str, Any]],
+    objectives: list[dict[str, Any]],
+    extraction_status: str,
+    reason_for_fallback: str,
+) -> dict[str, Any]:
+    raw_objective_section = "\n".join(str(item.get("text", "")) for item in section if item.get("text"))
+    return {
+        "raw_objective_section": raw_objective_section,
+        "selected_heading": str(selected_heading.get("text", "")),
+        "selected_subheading": str(selected_subheading.get("text", "")) if selected_subheading else "",
+        "objective_extraction_status": extraction_status,
+        "reason_for_fallback": reason_for_fallback,
+        "fallback_reason": reason_for_fallback,
+        "detected_objectives": objectives,
+        "objective_count": len(objectives),
+        "objective_source_page": selected_heading.get("page", ""),
+    }
+
+
+def log_objective_debug(objective_debug: dict[str, Any]) -> None:
+    logger.info(
+        "OBJECTIVE DEBUG\nDetected heading: %s\nDetected subheading: %s\nDetected objectives: %s\nFallback reason: %s",
+        objective_debug.get("selected_heading", ""),
+        objective_debug.get("selected_subheading", ""),
+        len(objective_debug.get("detected_objectives", []) or []),
+        objective_debug.get("reason_for_fallback", ""),
+    )
 
 
 def is_universal_objective_heading(text: str) -> bool:

@@ -15,12 +15,62 @@ router = APIRouter(prefix="/parser", tags=["parser"])
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 GENERATED_OUTPUT_ROOT = PROJECT_ROOT / "storage" / "generated_outputs"
 PARSED_THESIS_FILENAME = "parsed_thesis.json"
+OBJECTIVE_DEBUG_FILENAME = "objective_debug.txt"
 
 
 def get_parsed_output_path(project_id: str) -> Path:
     output_dir = GENERATED_OUTPUT_ROOT / project_id
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir / PARSED_THESIS_FILENAME
+
+
+def get_objective_debug_path(project_id: str) -> Path:
+    output_dir = GENERATED_OUTPUT_ROOT / project_id / "parsed_thesis"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir / OBJECTIVE_DEBUG_FILENAME
+
+
+def format_objective_debug(parsed_output: dict[str, Any]) -> str:
+    debug = parsed_output.get("objective_debug", {})
+    metadata = parsed_output.get("objective_extraction_metadata", {})
+    if not isinstance(debug, dict):
+        debug = {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    objectives = debug.get("detected_objectives", parsed_output.get("objectives", []))
+    objective_lines = []
+    if isinstance(objectives, list):
+        for index, objective in enumerate(objectives, start=1):
+            if isinstance(objective, dict):
+                objective_lines.append(f"{index}. {objective.get('objective_text', objective)}")
+            else:
+                objective_lines.append(f"{index}. {objective}")
+
+    return "\n".join(
+        [
+            "OBJECTIVE DEBUG",
+            f"selected_heading: {debug.get('selected_heading') or metadata.get('selected_heading', '')}",
+            f"selected_subheading: {debug.get('selected_subheading') or metadata.get('selected_subheading', '')}",
+            f"objective_extraction_status: {debug.get('objective_extraction_status') or parsed_output.get('objective_extraction_status', '')}",
+            f"reason_for_fallback: {debug.get('reason_for_fallback', '')}",
+            "",
+            "Detected heading:",
+            str(debug.get("selected_heading") or metadata.get("selected_heading", "")),
+            "",
+            "Detected subheading:",
+            str(debug.get("selected_subheading") or metadata.get("selected_subheading", "")),
+            "",
+            "Detected objectives:",
+            "\n".join(objective_lines) if objective_lines else "None",
+            "",
+            "Fallback reason:",
+            str(debug.get("fallback_reason") or debug.get("reason_for_fallback", "")),
+            "",
+            "Raw objective section:",
+            str(debug.get("raw_objective_section", "")),
+        ]
+    )
 
 
 def parse_project_uploads(project_id: str) -> dict[str, Any]:
@@ -45,6 +95,10 @@ def parse_project_uploads(project_id: str) -> dict[str, Any]:
 
     output_path = get_parsed_output_path(project_id)
     parsed_output = safe_write_json(output_path, parsed_output, status="parsed")
+    get_objective_debug_path(project_id).write_text(
+        format_objective_debug(parsed_output),
+        encoding="utf-8",
+    )
     register_artifact(project_id, "parser", output_path, status="parsed")
     log_activity(
         project_id=project_id,
@@ -85,3 +139,21 @@ def get_parsed_thesis(project_id: str) -> dict[str, Any]:
         )
 
     return parsed_output
+
+
+@router.get("/{project_id}/objective-debug")
+def get_objective_debug(project_id: str) -> dict[str, str]:
+    debug_path = get_objective_debug_path(project_id)
+    if not debug_path.exists():
+        parsed_output = read_parsed_thesis(project_id)
+        if not parsed_output:
+            raise HTTPException(
+                status_code=404,
+                detail="Objective debug output has not been generated for this project.",
+            )
+        debug_path.write_text(format_objective_debug(parsed_output), encoding="utf-8")
+
+    return {
+        "project_id": project_id,
+        "objective_debug": debug_path.read_text(encoding="utf-8"),
+    }
