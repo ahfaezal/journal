@@ -280,10 +280,22 @@ export type ObjectiveMapRow = {
   confidence_score: number;
 };
 
+export type GeneralObjective = {
+  objective_text?: string;
+  source_file?: string;
+  source_chapter?: string;
+  source_heading?: string;
+  confidence_score?: number;
+  extraction_status?: string;
+  objective_source_page?: string | number;
+};
+
 export type ObjectiveMap = {
   project_id: string;
   status: string;
   extraction_status?: string;
+  general_objective?: GeneralObjective;
+  objective_extraction_metadata?: Record<string, string | number>;
   total_objectives: number;
   mapped_objectives: number;
   unmapped_objectives: number;

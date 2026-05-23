@@ -191,6 +191,20 @@ export default function ObjectiveMapPage() {
           ))}
         </section>
 
+        {objectiveMap.general_objective?.objective_text ? (
+          <Card>
+            <div className="mb-2 text-[13px] font-semibold uppercase tracking-[0.12em] text-cyan-700">
+              General Objective
+            </div>
+            <h2 className="text-lg font-semibold text-slate-950">
+              {objectiveMap.general_objective.objective_text}
+            </h2>
+            <p className="mt-2 text-[14px] text-slate-500">
+              {objectiveMap.general_objective.source_heading ?? "General objective"} - {objectiveMap.general_objective.confidence_score ?? 60}% confidence
+            </p>
+          </Card>
+        ) : null}
+
         <section className="grid gap-6 xl:grid-cols-[1fr_360px]">
           <Card>
             <div className="mb-4">

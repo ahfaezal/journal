@@ -22,7 +22,7 @@ OBJECTIVE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 OBJECTIVE_SECTION_PATTERN = re.compile(
-    r"\b(?:objektif\s+kajian|objektif\s+penyelidikan|research\s+objectives?|tujuan\s+kajian|persoalan\s+kajian|the\s+objectives\s+of\s+this\s+study\s+are|kajian\s+ini\s+bertujuan\s+untuk|objektif\s+kajian\s+ini\s+adalah)\b",
+    r"\b(?:objektif\s+kajian|objektif\s+penyelidikan|research\s+objectives?)\b",
     re.IGNORECASE,
 )
 FALSE_OBJECTIVE_PATTERN = re.compile(
@@ -30,6 +30,15 @@ FALSE_OBJECTIVE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 ITEM_PREFIX_PATTERN = re.compile(r"^\s*(?:\d+[.)]|[ivxlcdm]+[.)]|[a-z][.)]|[-•])\s+(.+)", re.IGNORECASE)
+NUMBERED_OBJECTIVE_PATTERN = re.compile(r"^\s*(?:\d+[.)]|[ivxlcdm]+[.)])\s+(.+)", re.IGNORECASE)
+BULLET_OBJECTIVE_PATTERN = re.compile(r"^\s*(?:[-•])\s+(.+)", re.IGNORECASE)
+PHASE_OBJECTIVE_PATTERN = re.compile(r"^\s*(Fasa\s+[1-3]|Phase\s+[1-3])\s*[:.-]\s*(.+)", re.IGNORECASE)
+OBJECTIVE_SPECIFIC_SUBHEADING_PATTERN = re.compile(r"^\s*(?:objektif\s+khusus|specific\s+objectives?)\s*$", re.IGNORECASE)
+OBJECTIVE_GENERAL_SUBHEADING_PATTERN = re.compile(r"^\s*(?:objektif\s+umum|general\s+objectives?)\s*$", re.IGNORECASE)
+OBJECTIVE_STOP_HEADING_PATTERN = re.compile(
+    r"\b(?:persoalan\s+kajian|research\s+questions?|hipotesis|hypothes(?:is|es)|kepentingan\s+kajian|skop\s+kajian|sorotan\s+literatur|literature\s+review)\b",
+    re.IGNORECASE,
+)
 REFERENCE_HEADING_PATTERN = re.compile(r"^\s*(?:references|rujukan|bibliografi|bibliography)\s*$", re.IGNORECASE)
 HEADING_PATTERNS = [
     re.compile(r"^\s*(?:BAB|CHAPTER)\s+[1-5IVX]+\b.*", re.IGNORECASE),
@@ -72,13 +81,19 @@ def parse_uploaded_documents(upload_dir: Path) -> dict[str, Any]:
             aggregate[key].extend(document_result.get(key, []))
 
     normalized = {key: deduplicate_items(value) for key, value in aggregate.items()}
-    objectives, extraction_status = extract_research_objectives(parsed_documents, normalized["objective_candidates"])
-    normalized["objectives"] = objectives
+    objective_result = extract_research_objectives_result(
+        parsed_documents,
+        normalized["objective_candidates"],
+    )
+    normalized["objectives"] = objective_result["objectives"]
 
     return {
         "project_files_parsed": len(parsed_documents),
         "documents": parsed_documents,
-        "objective_extraction_status": extraction_status,
+        "objective_extraction_status": objective_result["objective_extraction_status"],
+        "general_objective": objective_result["general_objective"],
+        "rejected_objective_candidates": objective_result["rejected_objective_candidates"],
+        "objective_extraction_metadata": objective_result["objective_extraction_metadata"],
         **normalized,
     }
 
@@ -397,16 +412,19 @@ def extract_research_objectives(
         if not objective_heading:
             continue
 
+        items = extract_objective_items_below_heading(source_file, objective_heading, paragraphs, headings)
         logger.info(
-            "objective section found: source_file=%s heading=%s",
+            "objective section found: source_file=%s selected_heading=%s objective_count=%s objective_source_page=%s",
             source_file,
             objective_heading.get("text", ""),
+            len(items),
+            objective_heading.get("page", ""),
         )
-        extracted.extend(extract_objective_items_below_heading(source_file, objective_heading, paragraphs, headings))
+        extracted.extend(items)
 
     filtered = deduplicate_items([objective for objective in extracted if is_valid_research_objective(objective.get("objective_text", ""))])
     if filtered:
-        logger.info("objective items extracted: count=%s", len(filtered[:10]))
+        logger.info("objective items extracted: objective_count=%s", len(filtered[:10]))
         return assign_objective_ids(filtered[:10], extraction_status="extracted"), "extracted"
 
     fallback = build_fallback_objectives(search_documents, objective_candidates)
@@ -458,8 +476,57 @@ def extract_objective_items_below_heading(
     heading_position = int(objective_heading.get("position", 0) or 0)
     next_heading_position = find_next_major_heading_position(source_file, heading_position, headings)
     source_heading = str(objective_heading.get("text", "Research Objectives"))
-    items: list[dict[str, Any]] = []
+    section_paragraphs = collect_objective_section_paragraphs(
+        source_file,
+        heading_position,
+        next_heading_position,
+        paragraphs,
+    )
+    selected_subheading = select_objective_subheading(section_paragraphs)
+    if selected_subheading:
+        logger.info(
+            "selected_subheading=%s source_file=%s objective_source_page=%s",
+            selected_subheading.get("text", ""),
+            source_file,
+            selected_subheading.get("page", ""),
+        )
+        section_paragraphs = [
+            paragraph
+            for paragraph in section_paragraphs
+            if int(paragraph.get("position", 0) or 0) > int(selected_subheading.get("position", 0) or 0)
+        ]
+        source_heading = str(selected_subheading.get("text", source_heading))
 
+    phase_items = extract_phase_objectives(source_file, source_heading, section_paragraphs)
+    if phase_items:
+        return phase_items
+
+    numbered_items = extract_prefixed_objectives(
+        source_file,
+        source_heading,
+        section_paragraphs,
+        NUMBERED_OBJECTIVE_PATTERN,
+        confidence_score=95,
+    )
+    if numbered_items:
+        return numbered_items
+
+    return extract_prefixed_objectives(
+        source_file,
+        source_heading,
+        section_paragraphs,
+        BULLET_OBJECTIVE_PATTERN,
+        confidence_score=80,
+    )
+
+
+def collect_objective_section_paragraphs(
+    source_file: str,
+    heading_position: int,
+    next_heading_position: int | None,
+    paragraphs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    collected = []
     for paragraph in paragraphs:
         if str(paragraph.get("source_file", source_file)) != source_file:
             continue
@@ -468,43 +535,91 @@ def extract_objective_items_below_heading(
             continue
         if next_heading_position and position >= next_heading_position:
             break
-
         text = str(paragraph.get("text", ""))
-        if not text or FALSE_OBJECTIVE_PATTERN.search(text) or looks_like_citation_fragment(text):
-            continue
-        if is_objective_section_text(text) and position != heading_position:
-            continue
+        if OBJECTIVE_STOP_HEADING_PATTERN.search(text):
+            break
+        collected.append(paragraph)
+    return collected
 
-        item_text = clean_objective_item(text)
+
+def select_objective_subheading(section_paragraphs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for paragraph in section_paragraphs:
+        if OBJECTIVE_SPECIFIC_SUBHEADING_PATTERN.match(str(paragraph.get("text", ""))):
+            return paragraph
+    return None
+
+
+def extract_phase_objectives(
+    source_file: str,
+    source_heading: str,
+    section_paragraphs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    items = []
+    for paragraph in section_paragraphs:
+        text = str(paragraph.get("text", ""))
+        match = PHASE_OBJECTIVE_PATTERN.match(text)
+        if not match:
+            continue
+        item_text = clean_objective_item(match.group(2), allow_inferred=True)
         if item_text:
-            items.append(
-                {
-                    "objective_text": item_text,
-                    "source_file": source_file,
-                    "source_chapter": "Bab 1",
-                    "source_heading": source_heading,
-                    "position": position,
-                    "confidence_score": 90 if ITEM_PREFIX_PATTERN.match(text) else 78,
-                    "extraction_status": "extracted",
-                }
-            )
-
-    if not items:
-        inline_text = extract_inline_objective(source_heading)
-        if inline_text:
-            items.append(
-                {
-                    "objective_text": inline_text,
-                    "source_file": source_file,
-                    "source_chapter": "Bab 1",
-                    "source_heading": source_heading,
-                    "position": heading_position,
-                    "confidence_score": 72,
-                    "extraction_status": "extracted",
-                }
-            )
-
+            items.append(build_objective_item(source_file, source_heading, paragraph, item_text, 90))
     return items
+
+
+def extract_prefixed_objectives(
+    source_file: str,
+    source_heading: str,
+    section_paragraphs: list[dict[str, Any]],
+    pattern: re.Pattern[str],
+    confidence_score: int,
+) -> list[dict[str, Any]]:
+    items = []
+    ignore_until_specific = any(
+        OBJECTIVE_SPECIFIC_SUBHEADING_PATTERN.match(str(paragraph.get("text", "")))
+        for paragraph in section_paragraphs
+    )
+    specific_started = not ignore_until_specific
+
+    for paragraph in section_paragraphs:
+        text = str(paragraph.get("text", ""))
+        if OBJECTIVE_SPECIFIC_SUBHEADING_PATTERN.match(text):
+            specific_started = True
+            continue
+        if OBJECTIVE_GENERAL_SUBHEADING_PATTERN.match(text):
+            specific_started = False if ignore_until_specific else specific_started
+            continue
+        if not specific_started or FALSE_OBJECTIVE_PATTERN.search(text) or looks_like_citation_fragment(text):
+            continue
+
+        match = pattern.match(text)
+        if not match:
+            continue
+        item_text = clean_objective_item(match.group(1), allow_inferred=False)
+        if item_text:
+            items.append(build_objective_item(source_file, source_heading, paragraph, item_text, confidence_score))
+    return items
+
+
+def build_objective_item(
+    source_file: str,
+    source_heading: str,
+    paragraph: dict[str, Any],
+    item_text: str,
+    confidence_score: int,
+) -> dict[str, Any]:
+    return {
+        "objective_text": item_text,
+        "source_file": source_file,
+        "source_chapter": "Bab 1",
+        "source_heading": source_heading,
+        "position": int(paragraph.get("position", 0) or 0),
+        "page": paragraph.get("page", ""),
+        "confidence_score": confidence_score,
+        "extraction_status": "extracted",
+        "selected_heading": source_heading,
+        "selected_subheading": source_heading,
+        "objective_source_page": paragraph.get("page", ""),
+    }
 
 
 def find_next_major_heading_position(
@@ -517,13 +632,20 @@ def find_next_major_heading_position(
         if str(heading.get("source_file", source_file)) != source_file:
             continue
         position = int(heading.get("position", 0) or 0)
-        if position > heading_position:
+        text = str(heading.get("text", ""))
+        if position > heading_position and OBJECTIVE_STOP_HEADING_PATTERN.search(text):
+            later_headings.append(position)
+        elif position > heading_position and is_likely_major_heading(text):
             later_headings.append(position)
 
     return min(later_headings) if later_headings else None
 
 
-def clean_objective_item(text: str) -> str:
+def is_likely_major_heading(text: str) -> bool:
+    return bool(HEADING_PATTERNS[0].match(text) or re.match(r"^\s*\d+(?:\.\d+){0,3}\s+\S+", text))
+
+
+def clean_objective_item(text: str, allow_inferred: bool = False) -> str:
     stripped = normalize_text(text)
     match = ITEM_PREFIX_PATTERN.match(stripped)
     if match:
@@ -531,7 +653,7 @@ def clean_objective_item(text: str) -> str:
     stripped = re.sub(r"^(?:untuk|to)\s+", "", stripped, flags=re.IGNORECASE)
     if len(stripped) < 18 or len(stripped) > 320:
         return ""
-    if not re.search(r"\b(?:mengenal pasti|menentukan|menganalisis|membangunkan|menilai|mengkaji|to identify|to determine|to analyse|to analyze|to develop|to evaluate|identify|determine|analyse|analyze|develop|evaluate)\b", stripped, re.IGNORECASE):
+    if not allow_inferred and not re.search(r"\b(?:mengenal pasti|mengenalpasti|menentukan|menganalisis|membangunkan|menilai|mengkaji|to identify|to determine|to analyse|to analyze|to develop|to evaluate|identify|determine|analyse|analyze|develop|evaluate)\b", stripped, re.IGNORECASE):
         return ""
     return stripped
 
@@ -540,7 +662,7 @@ def extract_inline_objective(text: str) -> str:
     match = re.search(r"(?:adalah|are|untuk|to)\s+(.+)$", text, re.IGNORECASE)
     if not match:
         return ""
-    return clean_objective_item(match.group(1))
+    return clean_objective_item(match.group(1), allow_inferred=True)
 
 
 def looks_like_citation_fragment(text: str) -> bool:
@@ -556,7 +678,7 @@ def YEAR_PATTERN_COUNT(text: str) -> int:
 def is_valid_research_objective(text: str) -> bool:
     if not text or FALSE_OBJECTIVE_PATTERN.search(text) or looks_like_citation_fragment(text):
         return False
-    return bool(clean_objective_item(text))
+    return bool(clean_objective_item(text, allow_inferred=True))
 
 
 def build_fallback_objectives(
@@ -623,6 +745,9 @@ def assign_objective_ids(objectives: list[dict[str, Any]], extraction_status: st
                 "source_heading": str(objective.get("source_heading", "Research Objectives")),
                 "confidence_score": int(objective.get("confidence_score", 80) or 80),
                 "extraction_status": extraction_status,
+                "selected_heading": str(objective.get("selected_heading", objective.get("source_heading", ""))),
+                "selected_subheading": str(objective.get("selected_subheading", "")),
+                "objective_source_page": objective.get("objective_source_page", objective.get("page", "")),
             }
         )
     return assigned
@@ -719,3 +844,384 @@ def deduplicate_items(items: list[Any]) -> list[Any]:
         deduplicated.append(item)
 
     return deduplicated
+
+
+# PHASE 6.2 universal objective extractor.
+UNIVERSAL_OBJECTIVE_HEADING_PATTERN = re.compile(
+    r"\b(?:"
+    r"objektif\s+kajian|objektif\s+penyelidikan(?:\s+kajian)?|"
+    r"objektif\s+umum\s+dan\s+objektif\s+khusus|tujuan\s+kajian|matlamat\s+kajian|"
+    r"matlamat\s+penyelidikan|tujuan\s+penyelidikan|"
+    r"research\s+objectives?|objectives\s+of\s+the\s+study|study\s+objectives?|"
+    r"general\s+objective\s+and\s+specific\s+objectives?|general\s+research\s+objective|"
+    r"specific\s+research\s+objectives?|aim\s+and\s+objectives?|research\s+aim\s+and\s+objectives?"
+    r")\b",
+    re.IGNORECASE,
+)
+UNIVERSAL_SPECIFIC_SUBHEADING_PATTERN = re.compile(
+    r"^\s*(?:objektif\s+khusus|specific\s+(?:research\s+)?objectives?)\s*$",
+    re.IGNORECASE,
+)
+UNIVERSAL_GENERAL_SUBHEADING_PATTERN = re.compile(
+    r"^\s*(?:objektif\s+umum|general\s+(?:research\s+)?objective)\s*$",
+    re.IGNORECASE,
+)
+UNIVERSAL_FALSE_OBJECTIVE_PATTERN = re.compile(
+    r"\b(?:"
+    r"learning\s+objectives?|module\s+objectives?|course\s+objectives?|training\s+objectives?|"
+    r"assessment\s+objectives?|program\s+objectives?|"
+    r"objektif\s+pembelajaran|objektif\s+modul|objektif\s+latihan|objektif\s+kursus|"
+    r"objektif\s+program|objektif\s+penilaian"
+    r")\b",
+    re.IGNORECASE,
+)
+UNIVERSAL_STOP_HEADING_PATTERN = re.compile(
+    r"\b(?:"
+    r"persoalan\s+kajian|soalan\s+kajian|hipotesis\s+kajian|kepentingan\s+kajian|"
+    r"skop\s+kajian|batasan\s+kajian|definisi\s+operasional|sorotan\s+literatur|"
+    r"kerangka\s+teori|research\s+questions?|hypotheses|significance\s+of\s+the\s+study|"
+    r"scope\s+of\s+the\s+study|limitations|operational\s+definition|literature\s+review|"
+    r"theoretical\s+framework|conceptual\s+framework"
+    r")\b",
+    re.IGNORECASE,
+)
+UNIVERSAL_PHASE_PATTERN = re.compile(r"^\s*((?:Fasa|Phase)\s+[1-3])\s*[:.)-]\s*(.+)", re.IGNORECASE)
+UNIVERSAL_NUMBERED_PATTERN = re.compile(
+    r"^\s*(?:(\d+)[.)]|\(([ivxlcdm]+)\)|([ivxlcdm]+)[.)]|([a-z])[.)])\s+(.+)",
+    re.IGNORECASE,
+)
+UNIVERSAL_BULLET_PATTERN = re.compile(r"^\s*(?:[-*\u2022])\s+(.+)", re.IGNORECASE)
+UNIVERSAL_OBJECTIVE_VERB_PATTERN = re.compile(
+    r"\b(?:"
+    r"mengenal\s+pasti|mengenalpasti|menganalisis|membangunkan|menilai|mengkaji|"
+    r"menentukan|meneroka|menjelaskan|merumuskan|mengesahkan|"
+    r"to\s+identify|to\s+determine|to\s+examine|to\s+investigate|to\s+assess|"
+    r"to\s+evaluate|to\s+develop|to\s+explore|to\s+analyse|to\s+analyze|"
+    r"to\s+test|to\s+validate|to\s+measure|to\s+compare|"
+    r"identify|determine|examine|investigate|assess|evaluate|develop|explore|"
+    r"analyse|analyze|test|validate|measure|compare"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def extract_research_objectives_result(
+    documents: list[dict[str, Any]],
+    objective_candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    chapter_one_documents = [document for document in documents if is_chapter_one_document(document)]
+    search_documents = chapter_one_documents or documents
+    extracted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    general_objective: dict[str, Any] | None = None
+    metadata: dict[str, Any] = {
+        "selected_heading": "",
+        "selected_subheading": "",
+        "numbering_style_detected": "",
+        "extraction_strategy": "not_found",
+        "source_file": "",
+        "objective_source_page": "",
+        "confidence_score": 0,
+    }
+
+    for document in search_documents:
+        source_file = str(document.get("source_file", "Unknown file"))
+        paragraphs = [item for item in document.get("paragraphs", []) if isinstance(item, dict)]
+        headings = [item for item in document.get("headings", []) if isinstance(item, dict)]
+        selected_heading = find_universal_objective_heading(headings, paragraphs)
+        if not selected_heading:
+            continue
+
+        section = collect_universal_objective_section(source_file, selected_heading, paragraphs, headings)
+        if not section:
+            continue
+
+        general_objective = extract_general_objective(source_file, selected_heading, section)
+        specific_section, selected_subheading = choose_specific_section(section)
+        objectives, strategy, numbering_style, local_rejected = extract_specific_objectives(
+            source_file=source_file,
+            source_heading=str(selected_heading.get("text", "Research Objectives")),
+            selected_subheading=selected_subheading,
+            section=specific_section,
+        )
+        rejected.extend(local_rejected)
+
+        metadata = {
+            "selected_heading": str(selected_heading.get("text", "")),
+            "selected_subheading": str(selected_subheading.get("text", "")) if selected_subheading else "",
+            "numbering_style_detected": numbering_style,
+            "extraction_strategy": strategy,
+            "source_file": source_file,
+            "objective_source_page": selected_heading.get("page", ""),
+            "confidence_score": max((int(item.get("confidence_score", 0) or 0) for item in objectives), default=0),
+        }
+        logger.info(
+            "objective extraction metadata: selected_heading=%s selected_subheading=%s objective_count=%s objective_source_page=%s",
+            metadata["selected_heading"],
+            metadata["selected_subheading"],
+            len(objectives),
+            metadata["objective_source_page"],
+        )
+        extracted.extend(objectives)
+        if extracted:
+            break
+
+    cleaned = [item for item in deduplicate_items(extracted) if item.get("objective_text")]
+    if cleaned:
+        assigned = assign_objective_ids(cleaned[:10], extraction_status="extracted")
+        return {
+            "objective_extraction_status": "extracted",
+            "general_objective": general_objective or {},
+            "objectives": assigned,
+            "rejected_objective_candidates": rejected,
+            "objective_extraction_metadata": metadata,
+        }
+
+    fallback = build_fallback_objectives(search_documents, objective_candidates)
+    rejected.extend(reject_objective_candidates(objective_candidates, "no structured research objective section found"))
+    metadata["extraction_strategy"] = "fallback"
+    metadata["confidence_score"] = 40
+    logger.info("objective extraction fallback used: count=%s", len(fallback))
+    return {
+        "objective_extraction_status": "fallback",
+        "general_objective": general_objective or {},
+        "objectives": fallback,
+        "rejected_objective_candidates": rejected,
+        "objective_extraction_metadata": metadata,
+    }
+
+
+def find_universal_objective_heading(
+    headings: list[dict[str, Any]],
+    paragraphs: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    for heading in headings:
+        if is_universal_objective_heading(str(heading.get("text", ""))):
+            return heading
+    for paragraph in paragraphs:
+        text = str(paragraph.get("text", ""))
+        if len(text) <= 220 and is_universal_objective_heading(text):
+            return paragraph
+    return None
+
+
+def is_universal_objective_heading(text: str) -> bool:
+    return bool(UNIVERSAL_OBJECTIVE_HEADING_PATTERN.search(text)) and not UNIVERSAL_FALSE_OBJECTIVE_PATTERN.search(text)
+
+
+def collect_universal_objective_section(
+    source_file: str,
+    selected_heading: dict[str, Any],
+    paragraphs: list[dict[str, Any]],
+    headings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    heading_position = int(selected_heading.get("position", 0) or 0)
+    stop_position = find_universal_stop_position(source_file, heading_position, headings)
+    section = []
+    for paragraph in paragraphs:
+        if str(paragraph.get("source_file", source_file)) != source_file:
+            continue
+        position = int(paragraph.get("position", 0) or 0)
+        if position <= heading_position:
+            continue
+        if stop_position and position >= stop_position:
+            break
+        text = str(paragraph.get("text", ""))
+        if UNIVERSAL_STOP_HEADING_PATTERN.search(text):
+            break
+        section.append({**paragraph, "text": cleanup_pdf_fragment(text)})
+    return [item for item in section if item.get("text")]
+
+
+def find_universal_stop_position(source_file: str, heading_position: int, headings: list[dict[str, Any]]) -> int | None:
+    stops = []
+    for heading in headings:
+        if str(heading.get("source_file", source_file)) != source_file:
+            continue
+        position = int(heading.get("position", 0) or 0)
+        text = str(heading.get("text", ""))
+        if position <= heading_position:
+            continue
+        if UNIVERSAL_STOP_HEADING_PATTERN.search(text) or is_likely_major_heading(text):
+            stops.append(position)
+    return min(stops) if stops else None
+
+
+def extract_general_objective(
+    source_file: str,
+    selected_heading: dict[str, Any],
+    section: list[dict[str, Any]],
+) -> dict[str, Any]:
+    for index, item in enumerate(section):
+        text = str(item.get("text", ""))
+        if not UNIVERSAL_GENERAL_SUBHEADING_PATTERN.match(text):
+            continue
+        next_items = section[index + 1 :]
+        for candidate in next_items:
+            candidate_text = str(candidate.get("text", ""))
+            if UNIVERSAL_SPECIFIC_SUBHEADING_PATTERN.match(candidate_text):
+                return {}
+            cleaned = strip_objective_prefix(candidate_text)
+            if is_objective_sentence(cleaned, allow_without_prefix=True):
+                return {
+                    "objective_text": cleaned,
+                    "source_file": source_file,
+                    "source_chapter": "Bab 1",
+                    "source_heading": str(selected_heading.get("text", "Research Objectives")),
+                    "confidence_score": 60,
+                    "extraction_status": "general_objective",
+                    "objective_source_page": candidate.get("page", ""),
+                }
+    return {}
+
+
+def choose_specific_section(section: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    for index, item in enumerate(section):
+        if UNIVERSAL_SPECIFIC_SUBHEADING_PATTERN.match(str(item.get("text", ""))):
+            return section[index + 1 :], item
+    return section, None
+
+
+def extract_specific_objectives(
+    source_file: str,
+    source_heading: str,
+    selected_subheading: dict[str, Any] | None,
+    section: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str, str, list[dict[str, Any]]]:
+    rejected: list[dict[str, Any]] = []
+    phase_items, phase_rejected = extract_objectives_by_pattern(source_file, source_heading, selected_subheading, section, "phase")
+    rejected.extend(phase_rejected)
+    if phase_items:
+        return phase_items, "phase_objectives", "phase", rejected
+
+    numbered_items, numbered_rejected = extract_objectives_by_pattern(source_file, source_heading, selected_subheading, section, "numbered")
+    rejected.extend(numbered_rejected)
+    if numbered_items:
+        return numbered_items, "numbered_objectives", "numbered", rejected
+
+    bullet_items, bullet_rejected = extract_objectives_by_pattern(source_file, source_heading, selected_subheading, section, "bullet")
+    rejected.extend(bullet_rejected)
+    if bullet_items:
+        return bullet_items, "bullet_objectives", "bullet", rejected
+
+    return [], "none", "", rejected
+
+
+def extract_objectives_by_pattern(
+    source_file: str,
+    source_heading: str,
+    selected_subheading: dict[str, Any] | None,
+    section: list[dict[str, Any]],
+    mode: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    items = []
+    rejected = []
+    for paragraph in section:
+        text = str(paragraph.get("text", ""))
+        if is_subheading_line(text):
+            continue
+        item_text = ""
+        confidence = 60
+        if mode == "phase":
+            match = UNIVERSAL_PHASE_PATTERN.match(text)
+            if match:
+                item_text = strip_objective_prefix(match.group(2))
+                confidence = 90
+        elif mode == "numbered":
+            match = UNIVERSAL_NUMBERED_PATTERN.match(text)
+            if match:
+                item_text = strip_objective_prefix(match.group(5))
+                confidence = 95
+        elif mode == "bullet":
+            match = UNIVERSAL_BULLET_PATTERN.match(text)
+            if match:
+                item_text = strip_objective_prefix(match.group(1))
+                confidence = 80
+
+        if not item_text:
+            if looks_like_possible_objective_noise(text):
+                rejected.append(reject_candidate(paragraph, "narrative or unnumbered objective-like paragraph"))
+            continue
+        valid, reason = validate_universal_objective(item_text, mode)
+        if not valid:
+            rejected.append(reject_candidate(paragraph, reason))
+            continue
+        items.append(
+            {
+                "objective_text": item_text,
+                "source_file": source_file,
+                "source_chapter": "Bab 1",
+                "source_heading": source_heading,
+                "confidence_score": confidence,
+                "extraction_status": "extracted",
+                "selected_heading": source_heading,
+                "selected_subheading": str(selected_subheading.get("text", "")) if selected_subheading else "",
+                "objective_source_page": paragraph.get("page", ""),
+                "position": int(paragraph.get("position", 0) or 0),
+            }
+        )
+    return items, rejected
+
+
+def validate_universal_objective(text: str, mode: str) -> tuple[bool, str]:
+    if not text:
+        return False, "empty objective text"
+    if UNIVERSAL_FALSE_OBJECTIVE_PATTERN.search(text):
+        return False, "non-research objective"
+    if looks_like_citation_fragment(text):
+        return False, "citation fragment"
+    words = text.split()
+    if len(words) < 8 and mode != "phase":
+        return False, "incomplete fragment shorter than 8 words"
+    if ends_with_broken_author_citation(text):
+        return False, "text ends with broken author citation"
+    if not UNIVERSAL_OBJECTIVE_VERB_PATTERN.search(text):
+        return False, "research objective verb not detected"
+    return True, ""
+
+
+def cleanup_pdf_fragment(text: str) -> str:
+    cleaned = normalize_text(text)
+    cleaned = re.sub(r"^\(?[A-Z][A-Za-zÀ-ÿ'`\-]+,\s*(?:19|20)\d{2}[a-z]?\)?\.?$", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
+
+def strip_objective_prefix(text: str) -> str:
+    stripped = normalize_text(text)
+    stripped = re.sub(r"^(?:untuk|to)\s+", "", stripped, flags=re.IGNORECASE)
+    return stripped.strip(" ;:-")
+
+
+def is_objective_sentence(text: str, allow_without_prefix: bool = False) -> bool:
+    if not text or UNIVERSAL_FALSE_OBJECTIVE_PATTERN.search(text):
+        return False
+    if len(text.split()) < 8:
+        return False
+    return allow_without_prefix or bool(UNIVERSAL_OBJECTIVE_VERB_PATTERN.search(text))
+
+
+def is_subheading_line(text: str) -> bool:
+    return bool(UNIVERSAL_GENERAL_SUBHEADING_PATTERN.match(text) or UNIVERSAL_SPECIFIC_SUBHEADING_PATTERN.match(text))
+
+
+def looks_like_possible_objective_noise(text: str) -> bool:
+    return bool(re.search(r"\b(?:objective|objektif|tujuan|matlamat|identify|mengenal)\b", text, re.IGNORECASE))
+
+
+def ends_with_broken_author_citation(text: str) -> bool:
+    return bool(re.search(r"\([A-Z][A-Za-zÀ-ÿ'`\-]+(?:\s+et\s+al\.)?,?\s*$", text))
+
+
+def reject_candidate(candidate: dict[str, Any], reason: str) -> dict[str, Any]:
+    return {
+        "source_file": str(candidate.get("source_file", "Unknown file")),
+        "text": str(candidate.get("text", "")),
+        "position": candidate.get("position", 0),
+        "page": candidate.get("page", ""),
+        "rejected_reason": reason,
+    }
+
+
+def reject_objective_candidates(candidates: list[dict[str, Any]], reason: str) -> list[dict[str, Any]]:
+    return [reject_candidate(candidate, reason) for candidate in candidates if isinstance(candidate, dict)]

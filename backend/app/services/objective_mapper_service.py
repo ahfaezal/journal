@@ -68,6 +68,8 @@ def build_objective_map(
         "project_id": project_id,
         "status": "mapped",
         "extraction_status": parsed_thesis.get("objective_extraction_status", "unknown"),
+        "general_objective": parsed_thesis.get("general_objective", {}),
+        "objective_extraction_metadata": parsed_thesis.get("objective_extraction_metadata", {}),
         "total_objectives": len(objective_rows),
         "mapped_objectives": mapped_objectives,
         "unmapped_objectives": len(objective_rows) - mapped_objectives,
