@@ -13,16 +13,21 @@ import {
 
 import { AppShell } from "@/src/components/layouts/AppShell";
 import {
+  getInitialActiveProjectId,
+  getInitialActiveProjectTitle,
+  persistActiveProject,
+} from "@/src/lib/active-project";
+import {
+  getProject,
   getThesisAudit,
   runThesisAudit,
   type ThesisAudit,
   type ThesisAuditIssue,
 } from "@/src/lib/api";
 
-const PROJECT_ID = "PROJECT_001";
-
-const fallbackAudit: ThesisAudit = {
-  project_id: PROJECT_ID,
+function createFallbackAudit(projectId: string): ThesisAudit {
+  return {
+  project_id: projectId,
   status: "fallback",
   audit_timestamp: "",
   overall_audit_score: 0,
@@ -33,6 +38,7 @@ const fallbackAudit: ThesisAudit = {
   reviewer_readiness_score: 0,
   issues: [],
 };
+}
 
 const severityOrder = ["high", "medium", "low"] as const;
 
@@ -77,7 +83,9 @@ function severityClass(severity: ThesisAuditIssue["severity"]) {
 }
 
 export default function ThesisAuditPage() {
-  const [audit, setAudit] = useState<ThesisAudit>(fallbackAudit);
+  const [activeProjectId] = useState(getInitialActiveProjectId);
+  const [activeProjectTitle, setActiveProjectTitle] = useState(getInitialActiveProjectTitle);
+  const [audit, setAudit] = useState<ThesisAudit>(() => createFallbackAudit(activeProjectId));
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -87,14 +95,14 @@ export default function ThesisAuditPage() {
 
     async function loadAudit() {
       try {
-        const data = await getThesisAudit(PROJECT_ID);
+        const data = await getThesisAudit(activeProjectId);
         if (!cancelled) {
           setAudit(data);
           setNotice(null);
         }
       } catch {
         if (!cancelled) {
-          setAudit(fallbackAudit);
+          setAudit(createFallbackAudit(activeProjectId));
           setNotice("Thesis audit has not been generated yet.");
         }
       } finally {
@@ -109,13 +117,38 @@ export default function ThesisAuditPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    persistActiveProject(activeProjectId);
+    let cancelled = false;
+
+    async function loadProjectLabel() {
+      try {
+        const project = await getProject(activeProjectId);
+        const title = project.title || project.name || "";
+        if (!cancelled) {
+          setActiveProjectTitle(title);
+          persistActiveProject(activeProjectId, title);
+        }
+      } catch {
+        if (!cancelled) {
+          setActiveProjectTitle("");
+        }
+      }
+    }
+
+    loadProjectLabel();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId]);
 
   async function handleRunAudit() {
     try {
       setIsRunning(true);
       setNotice(null);
-      const data = await runThesisAudit(PROJECT_ID);
+      const data = await runThesisAudit(activeProjectId);
       setAudit(data);
     } catch (auditError) {
       setNotice(
@@ -159,6 +192,13 @@ export default function ThesisAuditPage() {
                 Audit unsupported claims, citation mismatches, table metadata,
                 and objective-finding continuity before journal extraction.
               </p>
+              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-cyan-400/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-cyan-200/20">
+                <span className="size-2 rounded-full bg-cyan-300" />
+                <span className="truncate">
+                  Active Project: {activeProjectId}
+                  {activeProjectTitle ? ` - ${activeProjectTitle}` : ""}
+                </span>
+              </div>
             </div>
             <button
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-300"

@@ -13,15 +13,20 @@ import {
 
 import { AppShell } from "@/src/components/layouts/AppShell";
 import {
+  getInitialActiveProjectId,
+  getInitialActiveProjectTitle,
+  persistActiveProject,
+} from "@/src/lib/active-project";
+import {
   buildCitationMap,
   getCitationMap,
+  getProject,
   type CitationMap,
 } from "@/src/lib/api";
 
-const PROJECT_ID = "PROJECT_001";
-
-const fallbackCitationMap: CitationMap = {
-  project_id: PROJECT_ID,
+function createFallbackCitationMap(projectId: string): CitationMap {
+  return {
+  project_id: projectId,
   status: "fallback",
   mfl_available: false,
   total_citations: 0,
@@ -34,6 +39,7 @@ const fallbackCitationMap: CitationMap = {
   mfl_match_status: "Not generated",
   citations: [],
 };
+}
 
 function Card({
   children,
@@ -55,7 +61,9 @@ function Card({
 }
 
 export default function CitationMapPage() {
-  const [citationMap, setCitationMap] = useState<CitationMap>(fallbackCitationMap);
+  const [activeProjectId] = useState(getInitialActiveProjectId);
+  const [activeProjectTitle, setActiveProjectTitle] = useState(getInitialActiveProjectTitle);
+  const [citationMap, setCitationMap] = useState<CitationMap>(() => createFallbackCitationMap(activeProjectId));
   const [isLoading, setIsLoading] = useState(true);
   const [isBuilding, setIsBuilding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -65,14 +73,14 @@ export default function CitationMapPage() {
 
     async function loadCitationMap() {
       try {
-        const data = await getCitationMap(PROJECT_ID);
+        const data = await getCitationMap(activeProjectId);
         if (!cancelled) {
           setCitationMap(data);
           setNotice(null);
         }
       } catch {
         if (!cancelled) {
-          setCitationMap(fallbackCitationMap);
+          setCitationMap(createFallbackCitationMap(activeProjectId));
           setNotice("Citation map has not been generated yet.");
         }
       } finally {
@@ -87,13 +95,38 @@ export default function CitationMapPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    persistActiveProject(activeProjectId);
+    let cancelled = false;
+
+    async function loadProjectLabel() {
+      try {
+        const project = await getProject(activeProjectId);
+        const title = project.title || project.name || "";
+        if (!cancelled) {
+          setActiveProjectTitle(title);
+          persistActiveProject(activeProjectId, title);
+        }
+      } catch {
+        if (!cancelled) {
+          setActiveProjectTitle("");
+        }
+      }
+    }
+
+    loadProjectLabel();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId]);
 
   async function handleBuildCitationMap() {
     try {
       setIsBuilding(true);
       setNotice(null);
-      const data = await buildCitationMap(PROJECT_ID);
+      const data = await buildCitationMap(activeProjectId);
       setCitationMap(data);
     } catch (buildError) {
       setNotice(
@@ -139,6 +172,13 @@ export default function CitationMapPage() {
                 Track in-text citations, MFL matches, unmatched citations, and
                 citation integrity before writing.
               </p>
+              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-cyan-400/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-cyan-200/20">
+                <span className="size-2 rounded-full bg-cyan-300" />
+                <span className="truncate">
+                  Active Project: {activeProjectId}
+                  {activeProjectTitle ? ` - ${activeProjectTitle}` : ""}
+                </span>
+              </div>
             </div>
             <button
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-300"

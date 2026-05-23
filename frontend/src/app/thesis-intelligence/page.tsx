@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -16,9 +17,13 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/src/components/layouts/AppShell";
-import { getIntelligence, type IntelligenceSummary } from "@/src/lib/api";
-
-const PROJECT_ID = "PROJECT_001";
+import {
+  getInitialActiveProjectId,
+  getInitialActiveProjectTitle,
+  persistActiveProject,
+  withProjectQuery,
+} from "@/src/lib/active-project";
+import { getIntelligence, getProject, type IntelligenceSummary } from "@/src/lib/api";
 
 const objectives = [
   { label: "Research Objective 1", findings: "Linked to Findings", discussion: "Discussion aligned" },
@@ -87,10 +92,12 @@ function SectionTitle({
   icon,
   title,
   action,
+  actionHref,
 }: {
   icon: React.ReactNode;
   title: string;
   action?: string;
+  actionHref?: string;
 }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-4">
@@ -100,17 +107,19 @@ function SectionTitle({
         </div>
         <h2 className="truncate text-lg font-semibold text-slate-950">{title}</h2>
       </div>
-      {action ? (
-        <button className="flex shrink-0 items-center gap-1 text-[15px] font-medium text-cyan-700">
+      {action && actionHref ? (
+        <Link className="flex shrink-0 items-center gap-1 text-[15px] font-medium text-cyan-700" href={actionHref}>
           {action}
           <ArrowRight className="size-4" />
-        </button>
+        </Link>
       ) : null}
     </div>
   );
 }
 
 export default function ThesisIntelligencePage() {
+  const [activeProjectId] = useState(getInitialActiveProjectId);
+  const [activeProjectTitle, setActiveProjectTitle] = useState(getInitialActiveProjectTitle);
   const [intelligence, setIntelligence] = useState<IntelligenceSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,7 +127,7 @@ export default function ThesisIntelligencePage() {
   async function refreshIntelligence() {
     try {
       setError(null);
-      const data = await getIntelligence(PROJECT_ID);
+      const data = await getIntelligence(activeProjectId);
       setIntelligence(data);
     } catch (loadError) {
       setError(
@@ -132,11 +141,12 @@ export default function ThesisIntelligencePage() {
   }
 
   useEffect(() => {
+    persistActiveProject(activeProjectId);
     let cancelled = false;
 
     async function loadIntelligence() {
       try {
-        const data = await getIntelligence(PROJECT_ID);
+        const data = await getIntelligence(activeProjectId);
 
         if (!cancelled) {
           setError(null);
@@ -162,7 +172,31 @@ export default function ThesisIntelligencePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProjectLabel() {
+      try {
+        const project = await getProject(activeProjectId);
+        const title = project.title || project.name || "";
+        if (!cancelled) {
+          setActiveProjectTitle(title);
+          persistActiveProject(activeProjectId, title);
+        }
+      } catch {
+        if (!cancelled) {
+          setActiveProjectTitle("");
+        }
+      }
+    }
+
+    loadProjectLabel();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId]);
 
   const dynamicSummaryCards = [
     {
@@ -255,6 +289,13 @@ export default function ThesisIntelligencePage() {
                 AI-generated research maps, citation integrity, objective alignment,
                 and audit readiness.
               </p>
+              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-cyan-400/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-cyan-200/20">
+                <span className="size-2 rounded-full bg-cyan-300" />
+                <span className="truncate">
+                  Active Project: {activeProjectId}
+                  {activeProjectTitle ? ` - ${activeProjectTitle}` : ""}
+                </span>
+              </div>
             </div>
             <button
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300"
@@ -345,6 +386,7 @@ export default function ThesisIntelligencePage() {
               icon={<GitBranch className="size-5" />}
               title="Citation Master Map"
               action="View Citation Map"
+              actionHref={withProjectQuery("/thesis-intelligence/citation-map", activeProjectId)}
             />
             <div className="grid gap-3 sm:grid-cols-2">
               {[
@@ -369,6 +411,7 @@ export default function ThesisIntelligencePage() {
               icon={<Target className="size-5" />}
               title="Objective Map"
               action="View Objective Map"
+              actionHref={withProjectQuery("/thesis-intelligence/objective-map", activeProjectId)}
             />
             <div className="space-y-3">
               {dynamicObjectives.map((objective) => (
@@ -397,6 +440,7 @@ export default function ThesisIntelligencePage() {
               icon={<BarChart3 className="size-5" />}
               title="Table Map"
               action="View Table Map"
+              actionHref={withProjectQuery("/thesis-intelligence/table-map", activeProjectId)}
             />
             <div className="overflow-hidden rounded-2xl border border-slate-100">
               <div className="grid grid-cols-[0.8fr_1.7fr_0.9fr_1.2fr] bg-slate-50 px-4 py-3 text-[13px] font-semibold uppercase tracking-[0.1em] text-slate-400">
@@ -420,7 +464,12 @@ export default function ThesisIntelligencePage() {
           </Card>
 
           <Card>
-            <SectionTitle icon={<AlertTriangle className="size-5" />} title="Thesis Audit" />
+            <SectionTitle
+              icon={<AlertTriangle className="size-5" />}
+              title="Thesis Audit"
+              action="Open Audit"
+              actionHref={withProjectQuery("/thesis-intelligence/audit", activeProjectId)}
+            />
             <div className="space-y-3">
               {dynamicAuditIssues.map((issue) => (
                 <div
@@ -443,7 +492,12 @@ export default function ThesisIntelligencePage() {
 
         <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
           <Card>
-            <SectionTitle icon={<Network className="size-5" />} title="Knowledge Graph" />
+            <SectionTitle
+              icon={<Network className="size-5" />}
+              title="Knowledge Graph"
+              action="Open Graph"
+              actionHref={withProjectQuery("/thesis-intelligence/knowledge-graph", activeProjectId)}
+            />
             <div className="relative h-80 overflow-hidden rounded-2xl bg-[#07162c]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.18),transparent_38%)]" />
               <svg

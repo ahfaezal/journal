@@ -12,12 +12,16 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/src/components/layouts/AppShell";
-import { buildTableMap, getTableMap, type TableMap } from "@/src/lib/api";
+import {
+  getInitialActiveProjectId,
+  getInitialActiveProjectTitle,
+  persistActiveProject,
+} from "@/src/lib/active-project";
+import { buildTableMap, getProject, getTableMap, type TableMap } from "@/src/lib/api";
 
-const PROJECT_ID = "PROJECT_001";
-
-const fallbackTableMap: TableMap = {
-  project_id: PROJECT_ID,
+function createFallbackTableMap(projectId: string): TableMap {
+  return {
+  project_id: projectId,
   status: "fallback",
   total_tables: 0,
   mapped_tables: 0,
@@ -25,6 +29,7 @@ const fallbackTableMap: TableMap = {
   findings_tables: 0,
   tables: [],
 };
+}
 
 function Card({
   children,
@@ -50,7 +55,9 @@ function statusLabel(status: string) {
 }
 
 export default function TableMapPage() {
-  const [tableMap, setTableMap] = useState<TableMap>(fallbackTableMap);
+  const [activeProjectId] = useState(getInitialActiveProjectId);
+  const [activeProjectTitle, setActiveProjectTitle] = useState(getInitialActiveProjectTitle);
+  const [tableMap, setTableMap] = useState<TableMap>(() => createFallbackTableMap(activeProjectId));
   const [isLoading, setIsLoading] = useState(true);
   const [isBuilding, setIsBuilding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -60,14 +67,14 @@ export default function TableMapPage() {
 
     async function loadTableMap() {
       try {
-        const data = await getTableMap(PROJECT_ID);
+        const data = await getTableMap(activeProjectId);
         if (!cancelled) {
           setTableMap(data);
           setNotice(null);
         }
       } catch {
         if (!cancelled) {
-          setTableMap(fallbackTableMap);
+          setTableMap(createFallbackTableMap(activeProjectId));
           setNotice("Table map has not been generated yet.");
         }
       } finally {
@@ -82,13 +89,38 @@ export default function TableMapPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    persistActiveProject(activeProjectId);
+    let cancelled = false;
+
+    async function loadProjectLabel() {
+      try {
+        const project = await getProject(activeProjectId);
+        const title = project.title || project.name || "";
+        if (!cancelled) {
+          setActiveProjectTitle(title);
+          persistActiveProject(activeProjectId, title);
+        }
+      } catch {
+        if (!cancelled) {
+          setActiveProjectTitle("");
+        }
+      }
+    }
+
+    loadProjectLabel();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId]);
 
   async function handleBuildTableMap() {
     try {
       setIsBuilding(true);
       setNotice(null);
-      const data = await buildTableMap(PROJECT_ID);
+      const data = await buildTableMap(activeProjectId);
       setTableMap(data);
     } catch (buildError) {
       setNotice(
@@ -132,6 +164,13 @@ export default function TableMapPage() {
                 Review thesis tables, source chapters, paper usage, and evidence
                 placement across journal sections.
               </p>
+              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-cyan-400/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-cyan-200/20">
+                <span className="size-2 rounded-full bg-cyan-300" />
+                <span className="truncate">
+                  Active Project: {activeProjectId}
+                  {activeProjectTitle ? ` - ${activeProjectTitle}` : ""}
+                </span>
+              </div>
             </div>
             <button
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-300"

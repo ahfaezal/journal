@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
@@ -17,6 +18,13 @@ import {
 
 import { AppShell } from "@/src/components/layouts/AppShell";
 import {
+  FALLBACK_PROJECT_ID,
+  getInitialActiveProjectId,
+  getInitialActiveProjectTitle,
+  persistActiveProject,
+  withProjectQuery,
+} from "@/src/lib/active-project";
+import {
   buildThesisIntelligence,
   getParsedThesis,
   getProject,
@@ -26,27 +34,6 @@ import {
   uploadThesisFile,
   type UploadedThesisFile,
 } from "@/src/lib/api";
-
-const FALLBACK_PROJECT_ID = "PROJECT_001";
-
-function getInitialActiveProjectId() {
-  if (typeof window === "undefined") {
-    return FALLBACK_PROJECT_ID;
-  }
-
-  const params = new URLSearchParams(window.location.search);
-  const queryProjectId = params.get("project_id")?.trim();
-  const storedProjectId = localStorage.getItem("activeProjectId")?.trim();
-  return queryProjectId || storedProjectId || FALLBACK_PROJECT_ID;
-}
-
-function getInitialActiveProjectTitle() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return localStorage.getItem("activeProjectTitle")?.trim() || "";
-}
 
 const uploadItems = [
   {
@@ -176,6 +163,7 @@ function StatusBadge({ label, required }: { label: string; required: boolean }) 
 }
 
 export default function UploadThesisPage() {
+  const router = useRouter();
   const [activeProjectId] = useState(getInitialActiveProjectId);
   const [activeProjectTitle, setActiveProjectTitle] = useState(getInitialActiveProjectTitle);
   const [selectedFiles, setSelectedFiles] = useState<Record<string, File>>({});
@@ -189,7 +177,7 @@ export default function UploadThesisPage() {
   const [isLoadingFiles, setIsLoadingFiles] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem("activeProjectId", activeProjectId);
+    persistActiveProject(activeProjectId);
   }, [activeProjectId]);
 
   useEffect(() => {
@@ -204,7 +192,7 @@ export default function UploadThesisPage() {
         if (!cancelled) {
           setActiveProjectTitle(title);
           if (title) {
-            localStorage.setItem("activeProjectTitle", title);
+            persistActiveProject(activeProjectId, title);
           }
       }
     } catch {
@@ -387,6 +375,7 @@ export default function UploadThesisPage() {
       setError(null);
       await buildThesisIntelligence(activeProjectId || FALLBACK_PROJECT_ID);
       setIntelligenceBuilt(true);
+      router.push(withProjectQuery("/thesis-intelligence", activeProjectId));
     } catch (buildError) {
       setError(
         buildError instanceof Error
@@ -640,7 +629,7 @@ export default function UploadThesisPage() {
               {intelligenceBuilt ? (
                 <Link
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 text-[14px] font-semibold text-cyan-700 transition hover:bg-cyan-100"
-                  href="/thesis-intelligence"
+                  href={withProjectQuery("/thesis-intelligence", activeProjectId)}
                 >
                   Open Thesis Intelligence
                   <ArrowRight className="size-4" />

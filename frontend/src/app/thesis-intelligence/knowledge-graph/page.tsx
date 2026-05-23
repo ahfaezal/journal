@@ -13,16 +13,21 @@ import {
 
 import { AppShell } from "@/src/components/layouts/AppShell";
 import {
+  getInitialActiveProjectId,
+  getInitialActiveProjectTitle,
+  persistActiveProject,
+} from "@/src/lib/active-project";
+import {
   buildKnowledgeGraph,
   getKnowledgeGraph,
+  getProject,
   type KnowledgeGraph,
   type KnowledgeGraphNode,
 } from "@/src/lib/api";
 
-const PROJECT_ID = "PROJECT_001";
-
-const fallbackGraph: KnowledgeGraph = {
-  project_id: PROJECT_ID,
+function createFallbackGraph(projectId: string): KnowledgeGraph {
+  return {
+  project_id: projectId,
   status: "fallback",
   nodes: [],
   edges: [],
@@ -34,6 +39,7 @@ const fallbackGraph: KnowledgeGraph = {
     graph_health_score: 0,
   },
 };
+}
 
 const nodePositions: Record<string, string> = {
   thesis: "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
@@ -96,7 +102,9 @@ function graphPosition(node: KnowledgeGraphNode, index: number) {
 }
 
 export default function KnowledgeGraphPage() {
-  const [graph, setGraph] = useState<KnowledgeGraph>(fallbackGraph);
+  const [activeProjectId] = useState(getInitialActiveProjectId);
+  const [activeProjectTitle, setActiveProjectTitle] = useState(getInitialActiveProjectTitle);
+  const [graph, setGraph] = useState<KnowledgeGraph>(() => createFallbackGraph(activeProjectId));
   const [isLoading, setIsLoading] = useState(true);
   const [isBuilding, setIsBuilding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -106,14 +114,14 @@ export default function KnowledgeGraphPage() {
 
     async function loadGraph() {
       try {
-        const data = await getKnowledgeGraph(PROJECT_ID);
+        const data = await getKnowledgeGraph(activeProjectId);
         if (!cancelled) {
           setGraph(data);
           setNotice(null);
         }
       } catch {
         if (!cancelled) {
-          setGraph(fallbackGraph);
+          setGraph(createFallbackGraph(activeProjectId));
           setNotice("Knowledge graph has not been generated yet.");
         }
       } finally {
@@ -128,13 +136,38 @@ export default function KnowledgeGraphPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    persistActiveProject(activeProjectId);
+    let cancelled = false;
+
+    async function loadProjectLabel() {
+      try {
+        const project = await getProject(activeProjectId);
+        const title = project.title || project.name || "";
+        if (!cancelled) {
+          setActiveProjectTitle(title);
+          persistActiveProject(activeProjectId, title);
+        }
+      } catch {
+        if (!cancelled) {
+          setActiveProjectTitle("");
+        }
+      }
+    }
+
+    loadProjectLabel();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId]);
 
   async function handleBuildGraph() {
     try {
       setIsBuilding(true);
       setNotice(null);
-      const data = await buildKnowledgeGraph(PROJECT_ID);
+      const data = await buildKnowledgeGraph(activeProjectId);
       setGraph(data);
     } catch (buildError) {
       setNotice(
@@ -175,6 +208,13 @@ export default function KnowledgeGraphPage() {
                 View relationships between thesis objectives, methodology,
                 findings, discussion, citations, tables, references, and audit issues.
               </p>
+              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-cyan-400/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-cyan-200/20">
+                <span className="size-2 rounded-full bg-cyan-300" />
+                <span className="truncate">
+                  Active Project: {activeProjectId}
+                  {activeProjectTitle ? ` - ${activeProjectTitle}` : ""}
+                </span>
+              </div>
             </div>
             <button
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-[15px] font-semibold text-[#07162c] shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-300"
