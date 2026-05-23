@@ -220,3 +220,44 @@ def test_objective_heading_rejects_ro_narrative_findings_text() -> None:
         and "RO marker" in item["heading_reject_reason"]
         for item in candidates
     )
+
+
+def test_objective_section_continues_through_general_and_specific_subheadings() -> None:
+    lines = [
+        "1.5 Objektif Kajian",
+        "1.5.1 Objektif Umum",
+        "Kajian ini bertujuan membangunkan modul dakwah pensyarah IPT secara sistematik.",
+        "1.5.2 Objektif Khusus",
+        "1. Mengenal pasti keperluan pembangunan modul dakwah pensyarah IPT.",
+        "2. Membangunkan modul dakwah pensyarah IPT berdasarkan dapatan kajian.",
+        "3. Mengesahkan modul dakwah pensyarah IPT melalui semakan pakar.",
+        "1.6 Persoalan Kajian",
+        "Apakah keperluan pembangunan modul dakwah pensyarah IPT?",
+    ]
+    document = {
+        "source_file": "Bab 1.pdf",
+        "paragraphs": [
+            {"source_file": "Bab 1.pdf", "text": text, "position": index, "page": 1}
+            for index, text in enumerate(lines, start=1)
+        ],
+        "headings": [
+            {"source_file": "Bab 1.pdf", "text": text, "position": index, "page": 1}
+            for index, text in enumerate(lines, start=1)
+            if index in {1, 2, 4, 8}
+        ],
+        "chapters": [{"label": "Bab 1"}],
+    }
+
+    result = extract_research_objectives_result([document], [])
+    debug = result["objective_debug"]
+
+    assert result["objective_extraction_status"] == "extracted"
+    assert result["objective_extraction_metadata"]["selected_heading"] == "1.5 Objektif Kajian"
+    assert result["objective_extraction_metadata"]["selected_subheading"] == "1.5.2 Objektif Khusus"
+    assert len(result["objectives"]) == 3
+    assert debug["objective_section_length"] == 6
+    assert debug["objective_section_start"] == 2
+    assert debug["objective_section_end"] == 7
+    assert "1.5.1 Objektif Umum" in debug["raw_objective_section_preview"]
+    assert "1.5.2 Objektif Khusus" in debug["raw_objective_section_preview"]
+    assert "1.6 Persoalan Kajian" not in debug["raw_objective_section_preview"]

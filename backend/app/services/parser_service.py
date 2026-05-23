@@ -860,11 +860,11 @@ UNIVERSAL_OBJECTIVE_HEADING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 UNIVERSAL_SPECIFIC_SUBHEADING_PATTERN = re.compile(
-    r"^\s*(?:objektif\s+khusus|specific\s+(?:research\s+)?objectives?)\s*$",
+    r"^\s*(?:\d+(?:\.\d+)*\s+)?(?:objektif\s+khusus|specific\s+(?:research\s+)?objectives?)\s*$",
     re.IGNORECASE,
 )
 UNIVERSAL_GENERAL_SUBHEADING_PATTERN = re.compile(
-    r"^\s*(?:objektif\s+umum|general\s+(?:research\s+)?objective)\s*$",
+    r"^\s*(?:\d+(?:\.\d+)*\s+)?(?:objektif\s+umum|general\s+(?:research\s+)?objective)\s*$",
     re.IGNORECASE,
 )
 UNIVERSAL_FALSE_OBJECTIVE_PATTERN = re.compile(
@@ -1064,8 +1064,10 @@ def build_objective_debug(
     candidate_headings_found: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     raw_objective_section = "\n".join(str(item.get("text", "")) for item in section if item.get("text"))
+    section_positions = [int(item.get("position", 0) or 0) for item in section]
     return {
         "raw_objective_section": raw_objective_section,
+        "raw_objective_section_preview": raw_objective_section[:1000],
         "selected_heading": str(selected_heading.get("text", "")),
         "selected_subheading": str(selected_subheading.get("text", "")) if selected_subheading else "",
         "objective_extraction_status": extraction_status,
@@ -1073,6 +1075,9 @@ def build_objective_debug(
         "fallback_reason": reason_for_fallback,
         "detected_objectives": objectives,
         "objective_count": len(objectives),
+        "objective_section_length": len(section),
+        "objective_section_start": min(section_positions) if section_positions else "",
+        "objective_section_end": max(section_positions) if section_positions else "",
         "objective_source_page": selected_heading.get("page", ""),
         "candidate_headings_found": candidate_headings_found or [],
     }
@@ -1310,9 +1315,19 @@ def find_universal_stop_position(source_file: str, heading_position: int, headin
         text = str(heading.get("text", ""))
         if position <= heading_position:
             continue
+        if is_objective_subsection_label(text):
+            continue
         if UNIVERSAL_STOP_HEADING_PATTERN.search(text) or is_likely_major_heading(text):
             stops.append(position)
     return min(stops) if stops else None
+
+
+def is_objective_subsection_label(text: str) -> bool:
+    normalized = normalize_text(text)
+    return bool(
+        UNIVERSAL_GENERAL_SUBHEADING_PATTERN.match(normalized)
+        or UNIVERSAL_SPECIFIC_SUBHEADING_PATTERN.match(normalized)
+    )
 
 
 def extract_general_objective(
