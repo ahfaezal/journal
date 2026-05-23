@@ -19,6 +19,7 @@ import { AppShell } from "@/src/components/layouts/AppShell";
 import {
   buildThesisIntelligence,
   getParsedThesis,
+  getProject,
   getUploadedFiles,
   parseThesis,
   type ParsedThesis,
@@ -26,7 +27,26 @@ import {
   type UploadedThesisFile,
 } from "@/src/lib/api";
 
-const PROJECT_ID = "PROJECT_001";
+const FALLBACK_PROJECT_ID = "PROJECT_001";
+
+function getInitialActiveProjectId() {
+  if (typeof window === "undefined") {
+    return FALLBACK_PROJECT_ID;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const queryProjectId = params.get("project_id")?.trim();
+  const storedProjectId = localStorage.getItem("activeProjectId")?.trim();
+  return queryProjectId || storedProjectId || FALLBACK_PROJECT_ID;
+}
+
+function getInitialActiveProjectTitle() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return localStorage.getItem("activeProjectTitle")?.trim() || "";
+}
 
 const uploadItems = [
   {
@@ -156,6 +176,8 @@ function StatusBadge({ label, required }: { label: string; required: boolean }) 
 }
 
 export default function UploadThesisPage() {
+  const [activeProjectId] = useState(getInitialActiveProjectId);
+  const [activeProjectTitle, setActiveProjectTitle] = useState(getInitialActiveProjectTitle);
   const [selectedFiles, setSelectedFiles] = useState<Record<string, File>>({});
   const [uploadedFiles, setUploadedFiles] = useState<UploadedThesisFile[]>([]);
   const [parsedThesis, setParsedThesis] = useState<ParsedThesis | null>(null);
@@ -166,10 +188,46 @@ export default function UploadThesisPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoadingFiles, setIsLoadingFiles] = useState(true);
 
+  useEffect(() => {
+    localStorage.setItem("activeProjectId", activeProjectId);
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    const projectId = activeProjectId;
+    let cancelled = false;
+
+    async function loadProjectLabel() {
+      try {
+        const project = await getProject(projectId);
+        const title = project.title || project.name || "";
+
+        if (!cancelled) {
+          setActiveProjectTitle(title);
+          if (title) {
+            localStorage.setItem("activeProjectTitle", title);
+          }
+      }
+    } catch {
+        if (!cancelled) {
+          setActiveProjectTitle("");
+        }
+      }
+    }
+
+    loadProjectLabel();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId]);
+
   async function refreshUploadedFiles() {
+    if (!activeProjectId) {
+      return;
+    }
+
     try {
       setError(null);
-      const files = await getUploadedFiles(PROJECT_ID);
+      const files = await getUploadedFiles(activeProjectId);
       setUploadedFiles(files);
     } catch (loadError) {
       setError(
@@ -183,16 +241,21 @@ export default function UploadThesisPage() {
   }
 
   useEffect(() => {
+    if (!activeProjectId) {
+      return;
+    }
+
     let cancelled = false;
 
     async function loadUploadedFiles() {
       try {
+        setIsLoadingFiles(true);
         setError(null);
-        const files = await getUploadedFiles(PROJECT_ID);
+        const files = await getUploadedFiles(activeProjectId);
         let parsed: ParsedThesis | null = null;
 
         try {
-          parsed = await getParsedThesis(PROJECT_ID);
+          parsed = await getParsedThesis(activeProjectId);
         } catch {
           parsed = null;
         }
@@ -221,7 +284,7 @@ export default function UploadThesisPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeProjectId]);
 
   const uploadedByChapter = useMemo(() => {
     return uploadedFiles.reduce<Record<string, UploadedThesisFile>>((accumulator, file) => {
@@ -280,7 +343,7 @@ export default function UploadThesisPage() {
     try {
       setUploadingKey(item.chapterLabel);
       setError(null);
-      await uploadThesisFile(PROJECT_ID, file, item.fileType, item.chapterLabel);
+      await uploadThesisFile(activeProjectId || FALLBACK_PROJECT_ID, file, item.fileType, item.chapterLabel);
       setParsedThesis(null);
       setIntelligenceBuilt(false);
       setSelectedFiles((current) => {
@@ -304,7 +367,7 @@ export default function UploadThesisPage() {
     try {
       setIsParsingThesis(true);
       setError(null);
-      const parsed = await parseThesis(PROJECT_ID);
+      const parsed = await parseThesis(activeProjectId || FALLBACK_PROJECT_ID);
       setParsedThesis(parsed);
       setIntelligenceBuilt(false);
     } catch (parseError) {
@@ -322,7 +385,7 @@ export default function UploadThesisPage() {
     try {
       setIsBuildingIntelligence(true);
       setError(null);
-      await buildThesisIntelligence(PROJECT_ID);
+      await buildThesisIntelligence(activeProjectId || FALLBACK_PROJECT_ID);
       setIntelligenceBuilt(true);
     } catch (buildError) {
       setError(
@@ -351,6 +414,13 @@ export default function UploadThesisPage() {
               <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300">
                 Upload Bab 1-5, MFL, journal template, and supporting documents.
               </p>
+              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-cyan-400/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-cyan-200/20">
+                <span className="size-2 rounded-full bg-cyan-300" />
+                <span className="truncate">
+                  Active Project: {activeProjectId || FALLBACK_PROJECT_ID}
+                  {activeProjectTitle ? ` - ${activeProjectTitle}` : ""}
+                </span>
+              </div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3">
               <div className="text-sm font-medium text-cyan-100">Supported formats</div>

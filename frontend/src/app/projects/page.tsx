@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -48,6 +49,7 @@ function Card({
 }
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [papers, setPapers] = useState<PaperWorkspace[]>([]);
   const [paperProgress, setPaperProgress] = useState<PaperProgressItem[]>([]);
@@ -109,6 +111,15 @@ export default function ProjectsPage() {
     } finally {
       setIsCreatingPaper(false);
     }
+  }
+
+  function handleOpenProject(project: Project) {
+    const projectId = project.project_id || project.id;
+    const projectTitle = project.title || project.name;
+
+    localStorage.setItem("activeProjectId", projectId);
+    localStorage.setItem("activeProjectTitle", projectTitle);
+    router.push(`/upload-thesis?project_id=${encodeURIComponent(projectId)}`);
   }
 
   const summary = useMemo(
@@ -251,7 +262,13 @@ export default function ProjectsPage() {
                       </div>
                     </div>
 
-                    <button className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#07162c] px-4 text-[15px] font-semibold text-white transition hover:bg-cyan-900">
+                    <button
+                      className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#07162c] px-4 text-[15px] font-semibold text-white transition hover:bg-cyan-900"
+                      onClick={() => {
+                        handleOpenProject(project);
+                      }}
+                      type="button"
+                    >
                       Open Project
                       <ArrowRight className="size-4" />
                     </button>
