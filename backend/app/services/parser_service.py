@@ -942,7 +942,7 @@ def extract_research_objectives_result(
         source_file = str(document.get("source_file", "Unknown file"))
         paragraphs = [item for item in document.get("paragraphs", []) if isinstance(item, dict)]
         headings = [item for item in document.get("headings", []) if isinstance(item, dict)]
-        selected_heading = find_universal_objective_heading(headings, paragraphs)
+        selected_heading = find_universal_objective_heading(headings, paragraphs, infer_document_chapter(document))
         if not selected_heading:
             continue
 
@@ -1036,13 +1036,14 @@ def extract_research_objectives_result(
 def find_universal_objective_heading(
     headings: list[dict[str, Any]],
     paragraphs: list[dict[str, Any]],
+    chapter: str = "Unknown",
 ) -> dict[str, Any] | None:
     ranked: list[tuple[int, int, dict[str, Any]]] = []
     for item in [*headings, *paragraphs]:
         text = str(item.get("text", ""))
-        if len(text) > 240:
+        if len(text) >= 120:
             continue
-        score, rejected, _reason = score_objective_heading(text)
+        score, rejected, _reason = score_objective_heading(text, chapter)
         if score <= 0 or rejected:
             continue
         position = int(item.get("position", 0) or 0)
@@ -1123,6 +1124,25 @@ OBJECTIVE_CONTEXT_REJECT_TERMS = (
 )
 
 
+OBJECTIVE_STRONG_REJECT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bro\s*[0-9]+\b", re.IGNORECASE),
+    re.compile(r"\bobjektif\s+kajian\s+(?:pertama|kedua|ketiga|keempat|kelima)\b", re.IGNORECASE),
+    re.compile(r"\bmenyokong\s+objektif\b", re.IGNORECASE),
+    re.compile(r"\bpencapaian\s+objektif\b", re.IGNORECASE),
+    re.compile(r"\bperbincangan\s+objektif\b", re.IGNORECASE),
+    re.compile(r"\bdapatan\s+objektif\b", re.IGNORECASE),
+)
+
+
+EXACT_OBJECTIVE_HEADINGS = {
+    "objektif kajian",
+    "objektif penyelidikan",
+    "research objectives",
+    "objectives of the study",
+    "specific research objectives",
+}
+
+
 def collect_objective_heading_candidates(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     for document in documents:
@@ -1143,7 +1163,7 @@ def collect_objective_heading_candidates(documents: list[dict[str, Any]]) -> lis
             if not heading or key in seen:
                 continue
             seen.add(key)
-            score, rejected, reason = score_objective_heading(heading)
+            score, rejected, reason = score_objective_heading(heading, chapter)
             if score <= 0:
                 continue
             candidates.append(
@@ -1154,8 +1174,10 @@ def collect_objective_heading_candidates(documents: list[dict[str, Any]]) -> lis
                     "position": item.get("position", ""),
                     "page": item.get("page", ""),
                     "score": score,
-                    "base_score": score,
+                    "heading_score": score,
+                    "heading_page": item.get("page", ""),
                     "rejected": rejected,
+                    "heading_reject_reason": reason if rejected else "",
                     "rejected_reason": reason if rejected else "",
                 }
             )
@@ -1171,12 +1193,25 @@ def collect_objective_heading_candidates(documents: list[dict[str, Any]]) -> lis
 
 
 def score_objective_heading(text: str) -> tuple[int, bool, str]:
+    return score_objective_heading(text, "Unknown")
+
+
+def score_objective_heading(text: str, chapter: str = "Unknown") -> tuple[int, bool, str]:
     cleaned = normalize_text(text).strip()
     lowered = cleaned.lower()
     if not cleaned:
         return 0, False, ""
+    if len(cleaned) >= 120:
+        return 10, True, "heading is too long to be a focused objective section heading"
+    if cleaned.endswith("."):
+        return 10, True, "heading ends with a full stop and appears narrative"
     if UNIVERSAL_FALSE_OBJECTIVE_PATTERN.search(cleaned):
         return 10, True, "non-research objective heading"
+    for pattern in OBJECTIVE_STRONG_REJECT_PATTERNS:
+        if pattern.search(cleaned):
+            return 10, True, "RO marker, ordinal objective, findings, support, or discussion objective text"
+    if not is_standalone_objective_heading_line(cleaned):
+        return 10, True, "line appears narrative rather than a standalone objective heading"
     if any(term in lowered for term in OBJECTIVE_CONTEXT_REJECT_TERMS) and re.search(r"\b(objektif|objective|objectives)\b", lowered):
         return 10, True, "discussion, alignment, evaluation, or achievement heading"
 
@@ -1186,11 +1221,36 @@ def score_objective_heading(text: str) -> tuple[int, bool, str]:
         extra_words = count_heading_extra_words(lowered, phrase)
         if extra_words > 4:
             return 10, True, "objective phrase appears inside a long non-section heading"
-        return priority, False, ""
+        exact_bonus = 25 if lowered == phrase and phrase in EXACT_OBJECTIVE_HEADINGS else 0
+        return priority + exact_bonus + objective_chapter_score_adjustment(chapter), False, ""
 
     if re.search(r"\b(objektif|objective|objectives)\b", lowered):
         return 10, True, "generic objective mention is not a ranked objective heading"
     return 0, False, ""
+
+
+def is_standalone_objective_heading_line(text: str) -> bool:
+    lowered = text.lower()
+    if re.search(r"\b(menyatakan|menunjukkan|membuktikan|menghuraikan|menyokong|berdasarkan|dalam kalangan|dapatan)\b", lowered):
+        return False
+    if re.search(r"\b(this|these|that|which|yang)\b", lowered) and re.search(r"\b(objektif|objective|objectives)\b", lowered):
+        return False
+    if re.search(r"\([^)]*\bro\s*[0-9]+[^)]*\)", lowered, re.IGNORECASE):
+        return False
+    return True
+
+
+def objective_chapter_score_adjustment(chapter: str) -> int:
+    lowered = chapter.lower()
+    if re.search(r"\b(bab|chapter)\s*(1|i)\b", lowered):
+        return 100
+    if re.search(r"\b(bab|chapter)\s*(2|ii)\b", lowered):
+        return 20
+    if re.search(r"\b(bab|chapter)\s*(3|iii)\b", lowered):
+        return 10
+    if re.search(r"\b(bab|chapter)\s*(4|iv|5|v)\b", lowered):
+        return -50
+    return 0
 
 
 def count_heading_extra_words(heading: str, phrase: str) -> int:

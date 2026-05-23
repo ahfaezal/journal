@@ -181,3 +181,42 @@ def test_objective_heading_ranking_prefers_bab_1_and_rejects_discussion_heading(
     )
     assert candidates[0]["heading"] == "Objektif Kajian"
     assert candidates[0]["chapter"] == "Bab 1"
+
+
+def test_objective_heading_rejects_ro_narrative_findings_text() -> None:
+    result = extract_research_objectives_result(
+        [
+            build_document(
+                [
+                    "menyokong Objektif Kajian Pertama (RO1)",
+                    "Dapatan ini menghuraikan sokongan terhadap objektif kajian pertama.",
+                    "dapatan objektif kajian kedua",
+                ],
+                source_file="Bab 4.pdf",
+            ),
+            build_document(
+                [
+                    "Objektif Kajian",
+                    "1. Mengenal pasti tahap keperluan pembangunan modul dakwah pensyarah IPT.",
+                    "2. Menganalisis kandungan modul dakwah yang sesuai untuk pensyarah IPT.",
+                    "Persoalan Kajian",
+                ],
+                source_file="Bab 1.pdf",
+            ),
+        ],
+        [],
+    )
+
+    metadata = result["objective_extraction_metadata"]
+    candidates = metadata["candidate_headings_found"]
+
+    assert metadata["selected_heading"] == "Objektif Kajian"
+    assert candidates[0]["heading"] == "Objektif Kajian"
+    assert candidates[0]["heading_score"] > 100
+    assert any(
+        item["heading"] == "menyokong Objektif Kajian Pertama (RO1)"
+        and item["rejected"] is True
+        and item["heading_score"] == 10
+        and "RO marker" in item["heading_reject_reason"]
+        for item in candidates
+    )
