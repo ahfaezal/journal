@@ -23,6 +23,7 @@ const PROJECT_ID = "PROJECT_001";
 const fallbackObjectiveMap: ObjectiveMap = {
   project_id: PROJECT_ID,
   status: "fallback",
+  extraction_status: "fallback",
   total_objectives: 0,
   mapped_objectives: 0,
   unmapped_objectives: 0,
@@ -121,6 +122,7 @@ export default function ObjectiveMapPage() {
     { label: "Mapped objectives", value: objectiveMap.mapped_objectives },
     { label: "Unmapped objectives", value: objectiveMap.unmapped_objectives },
     { label: "Avg confidence", value: `${averageConfidence}%` },
+    { label: "Extraction status", value: statusLabel(objectiveMap.extraction_status ?? objectiveMap.status) },
   ];
 
   return (
@@ -164,10 +166,13 @@ export default function ObjectiveMapPage() {
                 {notice}
               </span>
             ) : null}
+            <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-white/10">
+              Extraction: {statusLabel(objectiveMap.extraction_status ?? "unknown")}
+            </span>
           </div>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {summaryCards.map((card) => (
             <Card className="p-4" key={card.label}>
               <div className="flex items-center justify-between">
@@ -212,7 +217,10 @@ export default function ObjectiveMapPage() {
                           {objective.objective_text}
                         </h2>
                         <p className="mt-1 text-[14px] text-slate-500">
-                          {objective.source_file} · {objective.source_section}
+                          {objective.source_chapter ?? "Bab 1"} - {objective.source_heading ?? objective.source_section}
+                        </p>
+                        <p className="mt-1 text-[13px] text-slate-400">
+                          {objective.source_file}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -227,6 +235,9 @@ export default function ObjectiveMapPage() {
                         </span>
                         <span className="rounded-full bg-cyan-50 px-3 py-1 text-[13px] font-semibold text-cyan-700">
                           {objective.confidence_score}% confidence
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[13px] font-semibold text-slate-600">
+                          {statusLabel(objective.extraction_status ?? "extracted")}
                         </span>
                       </div>
                     </div>

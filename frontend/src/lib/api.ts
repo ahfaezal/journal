@@ -153,6 +153,7 @@ export type IntelligenceSummary = {
   citations_count?: number;
   references_count?: number;
   objectives_count?: number;
+  objective_extraction_status?: string;
   table_map?: Array<Record<string, string>>;
   citation_map?: {
     total_citations: number;
@@ -162,7 +163,7 @@ export type IntelligenceSummary = {
     match_rate?: number;
     mfl_match_status: string;
   };
-  objective_map?: Array<Record<string, string>>;
+  objective_map?: Array<Record<string, string | number>>;
   audit_issues?: {
     unsupported_claims: number;
     citation_mismatch: number;
@@ -268,6 +269,9 @@ export type ObjectiveMapRow = {
   objective_id: string;
   objective_text: string;
   source_file: string;
+  source_chapter?: string;
+  source_heading?: string;
+  extraction_status?: string;
   source_section: string;
   linked_findings: Array<Record<string, string>>;
   linked_discussion: Array<Record<string, string>>;
@@ -279,6 +283,7 @@ export type ObjectiveMapRow = {
 export type ObjectiveMap = {
   project_id: string;
   status: string;
+  extraction_status?: string;
   total_objectives: number;
   mapped_objectives: number;
   unmapped_objectives: number;

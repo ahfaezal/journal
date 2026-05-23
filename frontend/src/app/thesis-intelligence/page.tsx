@@ -212,9 +212,11 @@ export default function ThesisIntelligencePage() {
 
   const dynamicObjectives = intelligence?.objective_map?.length
     ? intelligence.objective_map.map((objective) => ({
-        label: objective.objective || "Research Objective",
-        findings: objective.status || "Mapped",
-        discussion: "Discussion alignment pending",
+        label: String(objective.objective || "Research Objective"),
+        findings: String(objective.status || "Mapped"),
+        discussion: objective.confidence_score
+          ? `${objective.confidence_score}% confidence`
+          : "Discussion alignment pending",
       }))
     : objectives;
 
@@ -279,6 +281,11 @@ export default function ThesisIntelligencePage() {
             {typeof intelligence?.uploaded_chapters_count === "number" ? (
               <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-white/10">
                 Chapters: {intelligence.uploaded_chapters_count}
+              </span>
+            ) : null}
+            {intelligence?.objective_extraction_status ? (
+              <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] font-semibold text-cyan-100 ring-1 ring-white/10">
+                Objectives: {intelligence.objective_extraction_status}
               </span>
             ) : null}
           </div>

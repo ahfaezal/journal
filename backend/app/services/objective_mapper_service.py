@@ -40,13 +40,17 @@ def build_objective_map(
 
         objective_rows.append(
             {
-                "objective_id": f"RO{index}",
+                "objective_id": str(objective.get("objective_id") or f"RO{index}"),
                 "objective_text": str(
-                    objective.get("detected_objective")
+                    objective.get("objective_text")
+                    or objective.get("detected_objective")
                     or objective.get("text")
                     or f"Research Objective {index}"
                 ),
                 "source_file": str(objective.get("source_file", "Unknown file")),
+                "source_chapter": str(objective.get("source_chapter", "Bab 1")),
+                "source_heading": str(objective.get("source_heading", "Research Objectives")),
+                "extraction_status": str(objective.get("extraction_status", "extracted")),
                 "source_section": detect_source_section(
                     parsed_headings,
                     str(objective.get("source_file", "")),
@@ -56,13 +60,14 @@ def build_objective_map(
                 "linked_discussion": linked_discussion,
                 "alignment_status": alignment_status,
                 "issue": build_issue(linked_findings, linked_discussion),
-                "confidence_score": confidence_score,
+                "confidence_score": max(confidence_score, int(objective.get("confidence_score", 0) or 0)),
             }
         )
 
     return {
         "project_id": project_id,
         "status": "mapped",
+        "extraction_status": parsed_thesis.get("objective_extraction_status", "unknown"),
         "total_objectives": len(objective_rows),
         "mapped_objectives": mapped_objectives,
         "unmapped_objectives": len(objective_rows) - mapped_objectives,

@@ -114,6 +114,7 @@ def build_thesis_intelligence(project_id: str) -> dict[str, object]:
     citations_count = len(parsed_thesis.get("citations", [])) if parsed_thesis else 0
     references_count = len(parsed_thesis.get("references", [])) if parsed_thesis else 0
     objectives_count = len(parsed_thesis.get("objectives", [])) if parsed_thesis else 0
+    objective_extraction_status = parsed_thesis.get("objective_extraction_status", "unknown") if parsed_thesis else "unknown"
     table_captions = parsed_thesis.get("table_captions", []) if parsed_thesis else []
     citation_map = get_existing_citation_map(project_id)
     if parsed_thesis and not citation_map:
@@ -145,6 +146,7 @@ def build_thesis_intelligence(project_id: str) -> dict[str, object]:
         "citations_count": citations_count,
         "references_count": mfl_references_count or references_count,
         "objectives_count": objectives_count,
+        "objective_extraction_status": objective_extraction_status,
         "table_map": build_table_map(table_captions, tables_count, uploaded_files),
         "citation_map": {
             "total_citations": citations_count,
@@ -207,10 +209,13 @@ def build_objective_map(
     if isinstance(objectives, list) and objectives:
         return [
             {
-                "objective": item.get("detected_objective", item.get("text", "Research Objective"))
+                "objective": item.get("objective_text", item.get("detected_objective", item.get("text", "Research Objective")))
                 if isinstance(item, dict)
                 else "Research Objective",
-                "status": "Parsed and ready for alignment",
+                "status": item.get("extraction_status", "Parsed and ready for alignment")
+                if isinstance(item, dict)
+                else "Parsed and ready for alignment",
+                "confidence_score": item.get("confidence_score", 0) if isinstance(item, dict) else 0,
             }
             for item in objectives[:8]
         ]
